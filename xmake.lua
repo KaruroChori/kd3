@@ -44,3 +44,48 @@ target("c-interface")
         add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
     end
     set_default(false)
+
+target("plot")
+    set_kind("binary")
+    add_files("examples/plot.cpp")
+    add_includedirs("include", {public=true})    
+    add_packages("openmp")
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
+        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+    end
+    set_default(false)
+
+-- Option that allows to build the UI demos, disabled by default to avoid unwanted extra dependencies
+option("with_demo")
+    set_default(false)
+    set_showmenu(true)
+    set_category("Build Options")
+    set_description("Build the GPU/CPU graphical raymarching demo")
+option_end()
+
+if has_config("with_demo") then
+    add_requires("raylib", { configs = { cxflags = "-DGRAPHICS_API_OPENGL_43" } })
+    add_requires("glm")
+end
+
+if has_config("with_demo") then
+
+target("render")
+    set_kind("binary")
+    set_languages("cxx23")
+    add_files("./examples/render.cpp")
+    add_deps("kd3")
+    add_packages("raylib")
+    add_packages("openmp")
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
+        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+        add_packages("tbb")
+    end
+
+end
