@@ -36,7 +36,7 @@ std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::sp
 // ---------------------------------------------------------
 int main() {
     using namespace kd3;
-    constexpr size_t PARALLELISM = 16;
+    constexpr size_t PARALLELISM = 32;
     std::cout << "--- KD-Tree HPC Benchmark --- ["<<SIMD_PARALLELISM<<"]\n";
     
     const size_t N_POINTS = 5'000'000;

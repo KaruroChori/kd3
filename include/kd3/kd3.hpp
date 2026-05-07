@@ -19,6 +19,9 @@
 
 namespace kd3 {
 
+constexpr float INF =  1e15f;
+constexpr float INF2 = 1e29f;
+
 using std::sort;
 using std::nth_element;
 
@@ -69,7 +72,6 @@ struct LeafBucket {
     alignas(std::max<size_t>(64, LeafSize*8)) float y[LeafSize];
     alignas(std::max<size_t>(64, LeafSize*8)) float z[LeafSize];
     uint32_t ids[LeafSize];
-    size_t count = 0; 
 };
 
 /**
@@ -161,14 +163,14 @@ public:
                 float dists[LeafSize];
                 
                 #pragma omp simd
-                for (size_t i = 0; i < b.count; ++i) {
+                for (size_t i = 0; i < LeafSize; ++i) {
                     float dx = target[0] - b.x[i];
                     float dy = target[1] - b.y[i];
                     float dz = target[2] - b.z[i];
                     dists[i] = dx*dx + dy*dy + dz*dz;
                 }
 
-                for (size_t i = 0; i < b.count; ++i) {
+                for (size_t i = 0; i < LeafSize; ++i) {
                     if (dists[i] < min_dist_sq) {
                         min_dist_sq = dists[i];
                         best_id = b.ids[i];
@@ -195,6 +197,10 @@ public:
             stack[stack_sz++] = {first, 0.0f};
         }
 
+        // Filter out pseudo-infinity points in case tree only had dummy data (impossible from Builder) 
+        // or user queried 1e15f explicitly.
+        if (min_dist_sq >= INF2) return std::nullopt;
+
         return KnnResult{min_dist_sq, best_id};
     }
 
@@ -210,17 +216,14 @@ public:
         const size_t k = buffer.size();
         if (buckets.empty() || k == 0) return {};
         
-        size_t heap_size = 0; // Tracks the active number of elements in the buffer
+        size_t heap_size = 0;
 
-        // Lambda to manage the max-heap directly inside the span
         auto push_heap = [&](float dist, uint32_t id) {
             if (heap_size < k) {
-                // Buffer not full: append and sift up
                 buffer[heap_size] = {dist, id};
                 heap_size++;
                 std::push_heap(buffer.begin(), buffer.begin() + heap_size);
             } else if (dist < buffer.front().dist_sq) {
-                // Buffer full, new element is closer than the furthest in heap: replace root
                 std::pop_heap(buffer.begin(), buffer.begin() + heap_size);
                 buffer[heap_size - 1] = {dist, id};
                 std::push_heap(buffer.begin(), buffer.begin() + heap_size);
@@ -237,8 +240,6 @@ public:
         while (stack_sz > 0) {
             auto [curr, node_min_dist] = stack[--stack_sz];
 
-            // Pruning condition: if the heap is full AND the closest possible 
-            // point in this node is further than our worst accepted point, skip it.
             if (heap_size == k && node_min_dist >= buffer.front().dist_sq) continue;
 
             if (curr >= LEAF_THRESHOLD) {
@@ -248,14 +249,14 @@ public:
                 float dists[LeafSize];
                 
                 #pragma omp simd
-                for (size_t i = 0; i < b.count; ++i) {
+                for (size_t i = 0; i < LeafSize; ++i) {
                     float dx = target[0] - b.x[i];
                     float dy = target[1] - b.y[i];
                     float dz = target[2] - b.z[i];
                     dists[i] = dx*dx + dy*dy + dz*dz;
                 }
 
-                for (size_t i = 0; i < b.count; ++i) {
+                for (size_t i = 0; i < LeafSize; ++i) {
                     push_heap(dists[i], b.ids[i]);
                 }
                 continue;
@@ -279,11 +280,20 @@ public:
             stack[stack_sz++] = {first, 0.0f};
         }
 
-        // Sort the resulting heap so the closest points are at the front
         std::sort(buffer.begin(), buffer.begin() + heap_size);
         
-        // Return a subspan covering only the valid results
-        return buffer.subspan(0, heap_size);
+        // Filter out pseudo-infinity padded points if the user asked for 
+        // more nearest-neighbors than points exist in the tree
+        size_t valid_results = 0;
+        for (size_t i = 0; i < heap_size; ++i) {
+            if (buffer[i].dist_sq < 1e29f) {
+                valid_results++;
+            } else {
+                break;
+            }
+        }
+        
+        return buffer.subspan(0, valid_results);
     }
 };
 
@@ -342,15 +352,26 @@ private:
             size_t size = end - start;
             if (size == 0) return;
 
+            // Base case: store in a Leaf Bucket
             if (node_idx >= B - 1) {
                 size_t bucket_idx = node_idx - (B - 1);
-                buckets[bucket_idx].count = size;
+                
+                // Copy genuine elements
                 for (size_t i = 0; i < size; ++i) {
                     buckets[bucket_idx].x[i] = temp_pts[start + i].coords[0];
                     buckets[bucket_idx].y[i] = temp_pts[start + i].coords[1];
                     buckets[bucket_idx].z[i] = temp_pts[start + i].coords[2];
                     buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
                 }
+                
+                // Fill the remainder with pseudo-infinity points
+                for (size_t i = size; i < LeafSize; ++i) {
+                    buckets[bucket_idx].x[i] = INF; // Extremely far away, 1e15^2 = 1e30 < 3.4e38 (float max)
+                    buckets[bucket_idx].y[i] = INF;
+                    buckets[bucket_idx].z[i] = INF;
+                    buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
+                }
+                
                 return;
             }
 

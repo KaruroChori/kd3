@@ -98,13 +98,13 @@ Just for reference, and to calibrate your expectations, benchmarks on my ryzen 5
 --- KD-Tree HPC Benchmark --- [4]
 Generating 5000000 random points...
 Building tree with OpenMP...
-Build Time: 208.031 ms
+Build Time: 144.695 ms
 Running 10000 queries via KD-Tree...
-KD-Tree Query Time: 18.9013 ms (529064 QPS)
+KD-Tree Query Time: 17.6458 ms (566707 QPS)
 Validating correctness against linear scan...
 [PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 5.69791 ms
-KD-Tree Speedup vs Brute: 3014.56x faster per query
+Single Brute Force Query: 4.5715 ms
+KD-Tree Speedup vs Brute: 2590.7x faster per query
 ```
 
 [^1]: Yes you are allowed to throw up.
