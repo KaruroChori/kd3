@@ -66,9 +66,9 @@ struct Point {
  */
 template <size_t LeafSize = SIMD_PARALLELISM>
 struct LeafBucket {
-    alignas(std::max<size_t>(64, LeafSize*8)) float x[LeafSize];
-    alignas(std::max<size_t>(64, LeafSize*8)) float y[LeafSize];
-    alignas(std::max<size_t>(64, LeafSize*8)) float z[LeafSize];
+    alignas(std::min<size_t>(64, LeafSize*8)) float x[LeafSize];
+    alignas(std::min<size_t>(64, LeafSize*8)) float y[LeafSize];
+    alignas(std::min<size_t>(64, LeafSize*8)) float z[LeafSize];
     uint32_t ids[LeafSize];
 };
 
@@ -160,7 +160,6 @@ public:
 
                 float dists[LeafSize];
                 
-                #pragma omp simd
                 for (size_t i = 0; i < LeafSize; ++i) {
                     float dx = target[0] - b.x[i];
                     float dy = target[1] - b.y[i];
@@ -246,7 +245,6 @@ public:
 
                 float dists[LeafSize];
                 
-                #pragma omp simd
                 for (size_t i = 0; i < LeafSize; ++i) {
                     float dx = target[0] - b.x[i];
                     float dy = target[1] - b.y[i];

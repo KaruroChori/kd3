@@ -33,9 +33,14 @@
 #define KD3_INF2 1e29
 
 // --- Memory Layout Constants ---
-// Replicates `alignas(std::max<size_t>(64, LeafSize*8))` in 32-bit words
-#define KD3_A_WORDS (max(16u, uint(KD3_LEAF_SIZE) * 2u))
-#define KD3_BUCKET_WORDS (3u * KD3_A_WORDS)
+// Replicates `alignas(std::min<size_t>(64, LeafSize*8))` in 32-bit words
+#define KD3_ALIGN_WORDS (min(16u, uint(KD3_LEAF_SIZE) * 2u))
+
+// Distance in words between x, y, and z arrays (rounded up to nearest alignment)
+#define KD3_ARRAY_STRIDE (((uint(KD3_LEAF_SIZE) + KD3_ALIGN_WORDS - 1u) / KD3_ALIGN_WORDS) * KD3_ALIGN_WORDS)
+
+// Total words per bucket (x, y, z, and ids, with final padding to alignment boundary)
+#define KD3_BUCKET_WORDS (((2u * KD3_ARRAY_STRIDE + 2u * uint(KD3_LEAF_SIZE) + KD3_ALIGN_WORDS - 1u) / KD3_ALIGN_WORDS) * KD3_ALIGN_WORDS)
 
 // ---------------------------------------------------------
 // BUFFERS
@@ -108,8 +113,8 @@ bool kd3_query_1nn(vec3 target, out Kd3KnnResult result) {
             uint base = bucket_idx * KD3_BUCKET_WORDS;
             
             uint x_base = base;
-            uint y_base = base + KD3_A_WORDS;
-            uint z_base = base + 2u * KD3_A_WORDS;
+            uint y_base = base + KD3_ARRAY_STRIDE;
+            uint z_base = base + 2u * KD3_ARRAY_STRIDE;
             uint id_base = z_base + uint(KD3_LEAF_SIZE);
 
             for (uint i = 0u; i < uint(KD3_LEAF_SIZE); ++i) {
@@ -184,12 +189,15 @@ uint kd3_query_knn(vec3 target, uint k, out Kd3KnnResult results[KD3_MAX_K]) {
 
         if (curr >= LEAF_THRESHOLD) {
             uint base = (curr - LEAF_THRESHOLD) * KD3_BUCKET_WORDS;
-            uint id_base = base + 2u * KD3_A_WORDS + uint(KD3_LEAF_SIZE);
+            uint x_base = base;
+            uint y_base = base + KD3_ARRAY_STRIDE;
+            uint z_base = base + 2u * KD3_ARRAY_STRIDE;
+            uint id_base = z_base + uint(KD3_LEAF_SIZE);
 
             for (uint i = 0u; i < uint(KD3_LEAF_SIZE); ++i) {
-                float bx = uintBitsToFloat(kd3_buckets[base + i]);
-                float by = uintBitsToFloat(kd3_buckets[base + KD3_A_WORDS + i]);
-                float bz = uintBitsToFloat(kd3_buckets[base + 2u * KD3_A_WORDS + i]);
+                float bx = uintBitsToFloat(kd3_buckets[x_base + i]);
+                float by = uintBitsToFloat(kd3_buckets[y_base + i]);
+                float bz = uintBitsToFloat(kd3_buckets[z_base + i]);
                 
                 float dx = target.x - bx; float dy = target.y - by; float dz = target.z - bz;
                 float dist_sq = dx*dx + dy*dy + dz*dz;

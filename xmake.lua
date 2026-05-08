@@ -14,8 +14,7 @@ target("kd3")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
-        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+        add_cxflags("-ffast-math", "-march=native")
     end
 
 target("benchmarks")
@@ -26,8 +25,7 @@ target("benchmarks")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
-        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+        add_cxflags("-ffast-math", "-march=native")
     end
     set_default(false)
 
@@ -40,8 +38,7 @@ target("c-interface")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
-        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+        add_cxflags("-ffast-math", "-march=native")
     end
     set_default(false)
 
@@ -53,8 +50,7 @@ target("plot")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
-        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
+        add_cxflags("-ffast-math", "-march=native")
     end
     set_default(false)
 
@@ -83,9 +79,6 @@ target("render")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native", {tools = {"gcc", "clang"}})
-        add_cxflags("/fp:fast", "/arch:AVX2", {tools = {"msvc"}})
-        add_packages("tbb")
+        add_cxflags( "-march=native")
     end
-
 end

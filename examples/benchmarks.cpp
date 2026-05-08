@@ -40,7 +40,7 @@ int main() {
     std::cout << "--- KD-Tree HPC Benchmark --- ["<<SIMD_PARALLELISM<<"]\n";
     
     const size_t N_POINTS = 5'000'000;
-    const size_t N_QUERIES = 10'000;
+    const size_t N_QUERIES = 100'000;
     const size_t K = 10;
 
     std::random_device rd;
@@ -89,23 +89,29 @@ int main() {
     std::cout << "KD-Tree Query Time: " << kd_ms << " ms (" 
               << (N_QUERIES / (kd_ms / 1000.0)) << " QPS)\n";
 
-    // Validation Check (Run 1 query against linear scan to verify correctness)
+    bool correct = true;
+    double linear_ms = 0;
+
     std::cout << "Validating correctness against linear scan...\n";
+
+    for(int i=0;i<N_QUERIES/1000;i++){
+
+    // Validation Check (Run 1 query against linear scan to verify correctness)
     std::array<kd3::KnnResult,K> storage{};
-    auto kd_res = tree.query_knn(queries[0].data(), storage);
+    auto kd_res = tree.query_knn(queries[i%1000].data(), storage);
     
     auto t5 = std::chrono::high_resolution_clock::now();
-    auto brute_res = linear_scan(queries[0].data(), K, points_copy);
+    auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);
     auto t6 = std::chrono::high_resolution_clock::now();
     
-    double linear_ms = std::chrono::duration<double, std::milli>(t6 - t5).count();
+    linear_ms += std::chrono::duration<double, std::milli>(t6 - t5).count();
     
-    bool correct = true;
     for (size_t i = 0; i < K; ++i) {
         // Due to floating point math eps errors, check ID instead of exact distance match
         if (kd_res[i].payload_id != brute_res[i].payload_id) {
             correct = false;
         }
+    }
     }
 
     if (correct) {
@@ -114,8 +120,8 @@ int main() {
         std::cout << "[FAIL] KD-Tree results differ!\n";
     }
 
-    std::cout << "Single Brute Force Query: " << linear_ms << " ms\n";
-    std::cout << "KD-Tree Speedup vs Brute: " << (linear_ms / (kd_ms / N_QUERIES)) << "x faster per query\n";
+    std::cout << "Single Brute Force Query: " << linear_ms/(N_QUERIES/1000.0) << " ms\n";
+    std::cout << "KD-Tree Speedup vs Brute: " << (linear_ms/(N_QUERIES/1000.0) / (kd_ms / N_QUERIES)) << "x faster per query\n";
 
     return dummy == 0 ? 1 : 0;
 }

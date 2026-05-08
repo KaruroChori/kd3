@@ -112,7 +112,7 @@ uniform vec3 root_bmin;
 uniform vec3 root_bmax;
 
 // --- kd3 Config ---
-#define KD3_LEAF_SIZE 16 
+#define KD3_LEAF_SIZE 32 
 #define KD3_MAX_K 8
 #define KD3_STACK_SIZE 128
 #define KD3_INF2 1e29
@@ -120,9 +120,6 @@ uniform vec3 root_bmax;
 #define KD3_BINDING_VALS 1
 #define KD3_BINDING_DIMS 2
 #define KD3_BINDING_BKS  3
-
-#define KD3_A_WORDS (max(16u, uint(KD3_LEAF_SIZE) * 2u))
-#define KD3_BUCKET_WORDS (3u * KD3_A_WORDS)
 
 // --- Structs & Buffers ---
 struct Surfel {
@@ -227,12 +224,12 @@ int main() {
 
     // 2. Build KdTree natively utilizing LeafSize = 8 for 1:1 GLSL SSBO matching
     auto t1 = std::chrono::high_resolution_clock::now();
-    auto tree_expected = kd3::KdTree<16>::build(build_points);
+    auto tree_expected = kd3::KdTree<32>::build(build_points);
     if (!tree_expected) {
         std::cerr << "Failed to build tree! Empty input?\n";
         return 1;
     }
-    kd3::KdTree<16> kdtree = std::move(tree_expected.value());
+    kd3::KdTree<32> kdtree = std::move(tree_expected.value());
     auto t2 = std::chrono::high_resolution_clock::now();
     std::cout << "KdTree Built in: " 
               << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() 
@@ -269,7 +266,7 @@ int main() {
     unsigned int surfel_ssbo = rlLoadShaderBuffer(g_surfels.size() * sizeof(GpuSurfel), g_surfels.data(), RL_DYNAMIC_DRAW);
     unsigned int vals_ssbo   = rlLoadShaderBuffer(view.split_vals.size() * sizeof(float), (void*)view.split_vals.data(), RL_DYNAMIC_DRAW);
     unsigned int dims_ssbo   = rlLoadShaderBuffer(view.split_dims.size() * sizeof(uint64_t), (void*)view.split_dims.data(), RL_DYNAMIC_DRAW);
-    unsigned int bks_ssbo    = rlLoadShaderBuffer(view.buckets.size() * sizeof(kd3::LeafBucket<16>), (void*)view.buckets.data(), RL_DYNAMIC_DRAW);
+    unsigned int bks_ssbo    = rlLoadShaderBuffer(view.buckets.size() * sizeof(kd3::LeafBucket<32>), (void*)view.buckets.data(), RL_DYNAMIC_DRAW);
 
     std::vector<Color> fb(W * H);
     Image img = { fb.data(), W, H, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
@@ -373,7 +370,7 @@ int main() {
 
         DrawRectangle(5, 5, 380, 130, Fade(BLACK, 0.8f));
         DrawText(TextFormat("ENGINE: [G] %s", use_gpu ? "GPU Compute (GLSL)" : "CPU Compute (OpenMP)"), 15, 15, 10, ORANGE);
-        DrawText("ACTIVE: kd3::KdTree<16>", 15, 35, 16, GREEN);
+        DrawText("ACTIVE: kd3::KdTree<32>", 15, 35, 16, GREEN);
 
         if (use_gpu) DrawText(TextFormat("GPU Frame Time: %.1f ms (%d FPS)", last_render_ms, GetFPS()), 15, 60, 16, YELLOW);
         else DrawText(TextFormat("CPU Render Time: %.1f ms (%d FPS)", last_render_ms, GetFPS()), 15, 60, 16, YELLOW);

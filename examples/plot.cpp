@@ -124,6 +124,9 @@ int main() {
         run_benchmark_for_leaf<8>(N, TRIALS, results);
         run_benchmark_for_leaf<16>(N, TRIALS, results);
         run_benchmark_for_leaf<32>(N, TRIALS, results);
+        run_benchmark_for_leaf<64>(N, TRIALS, results);
+        run_benchmark_for_leaf<128>(N, TRIALS, results);
+        run_benchmark_for_leaf<256>(N, TRIALS, results);
     }
 
     std::ofstream html("kd3_leaf_report.html");
