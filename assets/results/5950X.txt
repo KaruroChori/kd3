@@ -1,0 +1,81 @@
+Starting kd3 LeafSize Characterization Sweep (5 trials per config)...
+
+--- Tree Size: 100000 points ---
+  LeafSize:  1 | Build:   13.9 ms | Query P50: 420.0 ns (P99: 1110.0)
+  LeafSize:  2 | Build:    8.4 ms | Query P50: 330.0 ns (P99: 860.0)
+  LeafSize:  4 | Build:    7.4 ms | Query P50: 280.0 ns (P99: 730.0)
+  LeafSize:  8 | Build:    8.1 ms | Query P50: 240.0 ns (P99: 640.0)
+  LeafSize: 16 | Build:   12.3 ms | Query P50: 210.0 ns (P99: 530.0)
+  LeafSize: 32 | Build:   11.2 ms | Query P50: 230.0 ns (P99: 660.0)
+  LeafSize: 64 | Build:    7.7 ms | Query P50: 260.0 ns (P99: 770.0)
+  LeafSize: 128 | Build:    7.2 ms | Query P50: 270.0 ns (P99: 1010.0)
+  LeafSize: 256 | Build:   12.8 ms | Query P50: 380.0 ns (P99: 1340.0)
+
+--- Tree Size: 500000 points ---
+  LeafSize:  1 | Build:   25.8 ms | Query P50: 560.0 ns (P99: 1890.0)
+  LeafSize:  2 | Build:   24.5 ms | Query P50: 460.0 ns (P99: 1461.0)
+  LeafSize:  4 | Build:   22.8 ms | Query P50: 390.0 ns (P99: 1250.0)
+  LeafSize:  8 | Build:   20.8 ms | Query P50: 330.0 ns (P99: 990.0)
+  LeafSize: 16 | Build:   20.5 ms | Query P50: 280.0 ns (P99: 850.0)
+  LeafSize: 32 | Build:   21.1 ms | Query P50: 280.0 ns (P99: 880.0)
+  LeafSize: 64 | Build:   17.6 ms | Query P50: 300.0 ns (P99: 950.0)
+  LeafSize: 128 | Build:   17.5 ms | Query P50: 330.0 ns (P99: 1150.0)
+  LeafSize: 256 | Build:   16.5 ms | Query P50: 390.0 ns (P99: 1310.0)
+
+--- Tree Size: 1000000 points ---
+  LeafSize:  1 | Build:   39.1 ms | Query P50: 750.0 ns (P99: 2430.0)
+  LeafSize:  2 | Build:   38.1 ms | Query P50: 600.0 ns (P99: 1800.0)
+  LeafSize:  4 | Build:   36.1 ms | Query P50: 480.0 ns (P99: 1440.0)
+  LeafSize:  8 | Build:   36.8 ms | Query P50: 410.0 ns (P99: 1260.0)
+  LeafSize: 16 | Build:   31.2 ms | Query P50: 320.0 ns (P99: 990.0)
+  LeafSize: 32 | Build:   31.6 ms | Query P50: 340.0 ns (P99: 1140.0)
+  LeafSize: 64 | Build:   29.9 ms | Query P50: 340.0 ns (P99: 1160.0)
+  LeafSize: 128 | Build:   31.6 ms | Query P50: 380.0 ns (P99: 1300.0)
+  LeafSize: 256 | Build:   28.2 ms | Query P50: 460.0 ns (P99: 1690.0)
+
+--- Tree Size: 5000000 points ---
+  LeafSize:  1 | Build:  151.0 ms | Query P50: 1150.0 ns (P99: 3580.0)
+  LeafSize:  2 | Build:  145.9 ms | Query P50: 950.0 ns (P99: 2980.0)
+  LeafSize:  4 | Build:  145.8 ms | Query P50: 810.0 ns (P99: 2390.0)
+  LeafSize:  8 | Build:  138.5 ms | Query P50: 650.0 ns (P99: 1970.0)
+  LeafSize: 16 | Build:  135.5 ms | Query P50: 500.0 ns (P99: 1500.0)
+  LeafSize: 32 | Build:  125.8 ms | Query P50: 470.0 ns (P99: 1550.0)
+  LeafSize: 64 | Build:  129.4 ms | Query P50: 460.0 ns (P99: 1530.0)
+  LeafSize: 128 | Build:  122.3 ms | Query P50: 490.0 ns (P99: 1780.0)
+  LeafSize: 256 | Build:  118.8 ms | Query P50: 610.0 ns (P99: 2250.0)
+
+--- Tree Size: 10000000 points ---
+  LeafSize:  1 | Build:  314.9 ms | Query P50: 1310.0 ns (P99: 3940.0)
+  LeafSize:  2 | Build:  306.5 ms | Query P50: 1100.0 ns (P99: 3250.0)
+  LeafSize:  4 | Build:  301.3 ms | Query P50: 910.0 ns (P99: 2660.0)
+  LeafSize:  8 | Build:  289.4 ms | Query P50: 770.0 ns (P99: 2270.0)
+  LeafSize: 16 | Build:  277.7 ms | Query P50: 610.0 ns (P99: 1840.0)
+  LeafSize: 32 | Build:  276.1 ms | Query P50: 520.0 ns (P99: 1630.0)
+  LeafSize: 64 | Build:  271.4 ms | Query P50: 490.0 ns (P99: 1570.0)
+  LeafSize: 128 | Build:  264.3 ms | Query P50: 530.0 ns (P99: 1820.0)
+  LeafSize: 256 | Build:  256.9 ms | Query P50: 660.0 ns (P99: 2410.0)
+
+--- Tree Size: 50000000 points ---
+  LeafSize:  1 | Build: 1638.1 ms | Query P50: 1640.0 ns (P99: 4620.0)
+  LeafSize:  2 | Build: 1612.5 ms | Query P50: 1340.0 ns (P99: 3830.0)
+  LeafSize:  4 | Build: 1580.2 ms | Query P50: 1140.0 ns (P99: 3220.0)
+  LeafSize:  8 | Build: 1586.6 ms | Query P50: 1030.0 ns (P99: 2890.0)
+  LeafSize: 16 | Build: 1538.9 ms | Query P50: 840.0 ns (P99: 2320.0)
+  LeafSize: 32 | Build: 1519.6 ms | Query P50: 760.0 ns (P99: 2200.0)
+  LeafSize: 64 | Build: 1522.9 ms | Query P50: 690.0 ns (P99: 2070.0)
+  LeafSize: 128 | Build: 1508.6 ms | Query P50: 660.0 ns (P99: 2100.0)
+  LeafSize: 256 | Build: 1440.2 ms | Query P50: 800.0 ns (P99: 2620.0)
+
+--- Tree Size: 100000000 points ---
+  LeafSize:  1 | Build: 3417.1 ms | Query P50: 1740.0 ns (P99: 4800.0)
+  LeafSize:  2 | Build: 3358.6 ms | Query P50: 1470.0 ns (P99: 4040.0)
+  LeafSize:  4 | Build: 3324.8 ms | Query P50: 1280.0 ns (P99: 3491.0)
+  LeafSize:  8 | Build: 3306.9 ms | Query P50: 1120.0 ns (P99: 3150.0)
+  LeafSize: 16 | Build: 3160.5 ms | Query P50: 1010.0 ns (P99: 2650.0)
+  LeafSize: 32 | Build: 3213.1 ms | Query P50: 880.0 ns (P99: 2480.0)
+  LeafSize: 64 | Build: 3150.7 ms | Query P50: 770.0 ns (P99: 2230.0)
+  LeafSize: 128 | Build: 3117.9 ms | Query P50: 770.0 ns (P99: 2340.0)
+  LeafSize: 256 | Build: 3126.9 ms | Query P50: 870.0 ns (P99: 2730.0)
+
+Results rendered directly to kd3_leaf_report.html
+Open it in any browser.
