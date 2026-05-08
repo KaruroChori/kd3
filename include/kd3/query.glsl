@@ -9,6 +9,7 @@
  */
 
 // Warning: it requires at least GLSL 4.30 for SSBO support
+//          it requires 64bit extension GL_ARB_gpu_shader_int64
 
 // ---------------------------------------------------------
 // CONFIGURATION MACROS
@@ -56,7 +57,7 @@
 #endif
 
 layout(std430, binding = KD3_BINDING_VALS) readonly buffer KdTreeSplitVals { float kd3_split_vals[]; };
-layout(std430, binding = KD3_BINDING_DIMS) readonly buffer KdTreeSplitDims { uint kd3_split_dims[]; };
+layout(std430, binding = KD3_BINDING_DIMS) readonly buffer KdTreeSplitDims { uint64_t kd3_split_dims[]; };
 layout(std430, binding = KD3_BINDING_BKS)  readonly buffer KdTreeBuckets   { uint kd3_buckets[]; };
 
 // ---------------------------------------------------------
@@ -71,9 +72,9 @@ struct Kd3KnnResult {
 // INTERNAL HELPERS
 // ---------------------------------------------------------
 uint kd3_get_dim(uint i) {
-    uint u32_idx = i / 16u;               // 16 dimensions fit inside a 32-bit word
-    uint u32_offset = (i % 16u) * 2u;
-    return (kd3_split_dims[u32_idx] >> u32_offset) & 3u;
+    uint idx = i / 32u;               // 16 dimensions fit inside a 32-bit word
+    uint offset = (i % 32u) * 2u;
+    return uint(kd3_split_dims[idx] >> offset) & 3u;
 }
 
 // ---------------------------------------------------------

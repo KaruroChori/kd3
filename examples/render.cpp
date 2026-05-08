@@ -97,6 +97,7 @@ constexpr char basics[] = {
 
 const std::string gpu_shader_code = std::string{} + R"(
 #version 430 core
+#extension GL_ARB_gpu_shader_int64 : require
 
 out vec4 finalColor;
 
@@ -200,7 +201,7 @@ int main() {
 
     // Change this if you want to "increase resolution".
     // No decimation of points in this demo, so watch out for your PC EXPUROOOSION 🧙🏽✨💥
-    const float step = 0.1f;
+    const float step = 0.01f;
     for(float x = -2.0f; x <= 2.0f; x += step) {
         for(float y = -2.0f; y <= 2.0f; y += step) {
             for(float z = -2.0f; z <= 2.0f; z += step) {

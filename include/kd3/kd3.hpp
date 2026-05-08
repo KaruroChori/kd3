@@ -70,6 +70,7 @@ private:
         inline void set_dim(size_t i, uint8_t dim) {
             size_t block = i / 32;
             size_t offset = (i % 32) * 2;
+            #pragma omp atomic
             dims[block] |= (static_cast<uint64_t>(dim) << offset);
         }
 
