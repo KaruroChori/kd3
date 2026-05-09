@@ -8,7 +8,7 @@ target("kd3")
     add_cxxflags("-fno-exceptions","-fno-unwind-tables","-fno-rtti","-nostdlib++")
     --add_ldflags("-nostdlib++")
     add_includedirs("include", {public=true})    
-    add_headerfiles("include/kd3/(**)", {prefixdir = ""})
+    add_headerfiles("include/(**)", {prefixdir = ""})
     add_files("lib/kd3/**.cpp")
     add_packages("openmp")
     if is_mode("release") then

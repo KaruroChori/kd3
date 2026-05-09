@@ -155,6 +155,10 @@ xmake doxygen
 
 check for the index in your build folder.
 
+## Usage
+
+If you plan on using it via xmake, you can use [package.lua](./package.lua) as reference for the package file.
+
 ## Licence
 
 [AGPL-3](./LICENCE.txt)
