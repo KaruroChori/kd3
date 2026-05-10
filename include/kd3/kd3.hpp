@@ -186,7 +186,7 @@ public:
     /**
      * @brief Extracts the non-owning view capable of device offload.
      * 
-     * @return KdTreeView<LeafSize> The view of this tree.
+     * @return KdTreeView<LeafSize> The view of this tree after building.
      */
     KdTreeView<LeafSize> view() const noexcept {
         return KdTreeView<LeafSize>(split_vals, split_dims, buckets);

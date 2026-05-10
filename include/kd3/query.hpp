@@ -2,7 +2,7 @@
 /**
  * @file query.hpp
  * @author karurochari
- * @brief Lightweight part of the kd3 library, without memory allocations header library for a vec3 kd-tree, embeddable part.
+ * @brief Lightweight part of the kd3 library, without memory allocations and embedded-friendly.
  * @date 2026-05-04
  * 
  * @copyright Copyright (c) 2026
@@ -19,6 +19,7 @@ namespace kd3 {
 
 constexpr float INF =  1e15f;
 constexpr float INF2 = 1e29f;
+constexpr size_t MAX_STACK_DEPTH = 48;
 
 using std::sort;
 using std::nth_element;
@@ -142,7 +143,7 @@ public:
         uint32_t best_id = 0;
 
         struct SearchNode { size_t idx; float node_min_dist_sq; };
-        SearchNode stack[128]; 
+        SearchNode stack[MAX_STACK_DEPTH]; 
         size_t stack_sz = 0;
         
         stack[stack_sz++] = {0, 0.0f};
@@ -228,7 +229,7 @@ public:
         };
 
         struct SearchNode { size_t idx; float min_dist_sq; };
-        SearchNode stack[128]; 
+        SearchNode stack[MAX_STACK_DEPTH]; 
         size_t stack_sz = 0;
         stack[stack_sz++] = {0, 0.0f};
 

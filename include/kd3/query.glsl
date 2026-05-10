@@ -26,9 +26,9 @@
 #define KD3_MAX_K 8
 #endif
 
-// 128 is more than enough to traverse a tree
+// 48 is more than enough to traverse a tree
 #ifndef KD3_STACK_SIZE
-#define KD3_STACK_SIZE 128
+#define KD3_STACK_SIZE 48
 #endif
 
 #define KD3_INF2 1e29
