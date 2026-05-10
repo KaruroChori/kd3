@@ -14,12 +14,13 @@
 #include <bit>
 #include <limits>
 #include <cstdint>
+#include <optional>
 
 namespace kd3 {
 
 constexpr float INF =  1e15f;
 constexpr float INF2 = 1e29f;
-constexpr size_t MAX_STACK_DEPTH = 48;
+constexpr size_t MAX_STACK_DEPTH = 48*2;
 
 using std::sort;
 using std::nth_element;
@@ -61,15 +62,21 @@ struct Point {
 };
 
 /**
+ * @brief Information for ray hits.
+ * 
+ */
+struct RayHit { float t; uint32_t payload_id; };
+
+/**
  * @brief A bucket representing a leaf node in the kd-tree containing multiple points.
  * 
  * @tparam LeafSize The maximum number of points this leaf can hold.
  */
-template <size_t LeafSize = SIMD_PARALLELISM>
+template <size_t LeafSize = SIMD_PARALLELISM*4>
 struct LeafBucket {
-    alignas(std::min<size_t>(64, LeafSize*8)) float x[LeafSize];
-    alignas(std::min<size_t>(64, LeafSize*8)) float y[LeafSize];
-    alignas(std::min<size_t>(64, LeafSize*8)) float z[LeafSize];
+    alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float x[LeafSize];
+    alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float y[LeafSize];
+    alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float z[LeafSize];
     uint32_t ids[LeafSize];
 };
 
@@ -94,12 +101,14 @@ struct KnnResult {
  * 
  * @tparam LeafSize The number of elements packed into each SIMD-friendly leaf.
  */
-template <size_t LeafSize = SIMD_PARALLELISM>
+template <size_t LeafSize = SIMD_PARALLELISM*4>
 class KdTreeView {
 public:
     std::span<const float> split_vals;
     std::span<const uint64_t> split_dims;
     std::span<const LeafBucket<LeafSize>> buckets;
+    std::array<float,3> min_root;
+    std::array<float,3> max_root;
 
     /**
      * @brief Default constructor creating an empty view.
@@ -115,8 +124,11 @@ public:
      */
     KdTreeView(std::span<const float> vals, 
                std::span<const uint64_t> dims, 
-               std::span<const LeafBucket<LeafSize>> bks)
-        : split_vals(vals), split_dims(dims), buckets(bks) {}
+               std::span<const LeafBucket<LeafSize>> bks,
+               std::array<float,3> min_root,
+               std::array<float,3> max_root
+                )
+        : split_vals(vals), split_dims(dims), buckets(bks), min_root(min_root), max_root(max_root) {}
 
     /**
      * @brief Retrieves the split dimension for a given node index.
@@ -131,12 +143,150 @@ public:
     }
 
     /**
+     * @brief Find the closest intersection between a ray and points in the Kd-Tree.
+     * 
+     * @param ro 3-float array representing the ray origin.
+     * @param rd 3-float array representing the ray direction.
+     * @param max_t The maximum traversal distance along the ray.
+     * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
+     * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
+     */
+    std::optional<RayHit> query_ray(const std::array<float,3> ro, const std::array<float,3> rd, float max_t = INF, float radius = 0.0f) const noexcept {
+        if (buckets.empty()) return std::nullopt;
+
+
+        struct RayNode { size_t idx; float t_min; float t_max; };
+        RayNode stack[MAX_STACK_DEPTH];
+        size_t stack_sz = 0;
+        
+
+        
+        float best_t = max_t;
+        uint32_t best_id = static_cast<uint32_t>(-1);
+        bool hit = false;
+        
+        std::array<float,3> inv_rd;
+        for (int i = 0; i < 3; ++i) {
+            inv_rd[i] = (rd[i] == 0.0f) ? 0.0f : (1.0f / rd[i]); 
+        }
+
+        std::array<float,3> t1_aabb = {(min_root[0] - ro[0]) * inv_rd[0],(min_root[1] - ro[1]) * inv_rd[1],(min_root[2] - ro[2]) * inv_rd[2]};
+        std::array<float,3> t2_aabb = {(max_root[0] - ro[0]) * inv_rd[0],(max_root[1] - ro[1]) * inv_rd[1],(max_root[2] - ro[2]) * inv_rd[2]};
+
+        float tN = std::max(std::max(std::min(t1_aabb[0], t2_aabb[0]), std::min(t1_aabb[1], t2_aabb[1])), std::max(std::min(t1_aabb[2], t2_aabb[2]), float{}));
+        float tF = std::min(std::min(std::max(t1_aabb[0], t2_aabb[0]), std::max(t1_aabb[1], t2_aabb[1])), std::min(std::max(t1_aabb[2], t2_aabb[2]), max_t));
+
+        // 2. Instantly cull any ray that misses the scene entirely (e.g., Skybox rays)
+        if (tN > tF) return std::nullopt;
+        
+        stack[stack_sz++] = {0, tN, tF};
+
+        float rd_len_sq = rd[0]*rd[0] + rd[1]*rd[1] + rd[2]*rd[2];
+        float inv_rd_len_sq = rd_len_sq > 0.0f ? 1.0f / rd_len_sq : 0.0f;
+        float radius_sq = radius * radius;
+        float eps = radius_sq > 0.0f ? 0.0f : 1e-5f;
+
+        const size_t LEAF_THRESHOLD = buckets.size() - 1;
+
+        while (stack_sz > 0) {
+            auto [curr, t_min, node_t_max] = stack[--stack_sz];
+            
+            // Front-to-back culling
+            if (t_min >= best_t) continue;
+            
+            if (curr >= LEAF_THRESHOLD) {
+                size_t bucket_idx = curr - LEAF_THRESHOLD;
+                const auto& b = buckets[bucket_idx];
+                
+                for (size_t i = 0; i < LeafSize; ++i) {
+                    float dx = b.x[i] - ro[0];
+                    float dy = b.y[i] - ro[1];
+                    float dz = b.z[i] - ro[2];
+                    
+                    // Project point onto the mathematical line
+                    float t = (dx * rd[0] + dy * rd[1] + dz * rd[2]) * inv_rd_len_sq;
+                    
+                    if (t >= 0.0f && t < best_t) {
+                        float px = ro[0] + t * rd[0];
+                        float py = ro[1] + t * rd[1];
+                        float pz = ro[2] + t * rd[2];
+                        
+                        float dist_sq = (b.x[i] - px) * (b.x[i] - px) + 
+                                        (b.y[i] - py) * (b.y[i] - py) + 
+                                        (b.z[i] - pz) * (b.z[i] - pz);
+                                        
+                        if (dist_sq <= radius_sq + eps) {
+                            best_t = t;
+                            best_id = b.ids[i];
+                            hit = true;
+                        }
+                    }
+                }
+                continue;
+            }
+            
+            uint8_t dim = get_dim(curr);
+            float split = split_vals[curr];
+            
+            size_t left_child = 2 * curr + 1;
+            size_t right_child = 2 * curr + 2;
+            
+            // Handle ray traveling exactly parallel to the partition plane
+            if (rd[dim] == 0.0f) {
+                float dist_to_split = split - ro[dim];
+                if (dist_to_split > radius) {
+                    stack[stack_sz++] = {left_child, t_min, node_t_max};
+                } else if (dist_to_split < -radius) {
+                    stack[stack_sz++] = {right_child, t_min, node_t_max};
+                } else {
+                    stack[stack_sz++] = {right_child, t_min, node_t_max};
+                    stack[stack_sz++] = {left_child, t_min, node_t_max};
+                }
+                continue;
+            }
+            
+            size_t first  = rd[dim] >= 0.0f ? left_child : right_child;
+            size_t second = rd[dim] >= 0.0f ? right_child : left_child;
+            
+            float t_split = (split - ro[dim]) * inv_rd[dim];
+            float abs_inv_rd = inv_rd[dim] < 0.0f ? -inv_rd[dim] : inv_rd[dim];
+            float t_margin = radius * abs_inv_rd;
+            
+            float t_enter_second = t_split - t_margin;
+            float t_leave_first  = t_split + t_margin;
+            
+            bool visit_first  = t_min <= t_leave_first;
+            bool visit_second = node_t_max >= t_enter_second;
+            
+            if (visit_first && visit_second) {
+                // Front-to-back: Push furthest child 'second' first, so we evaluate 'first' child first.
+                float max_t_enter = t_min > t_enter_second ? t_min : t_enter_second;
+                float min_t_leave = node_t_max < t_leave_first ? node_t_max : t_leave_first;
+                
+                stack[stack_sz++] = {second, max_t_enter, node_t_max};
+                stack[stack_sz++] = {first, t_min, min_t_leave};
+            } else if (visit_first) {
+                stack[stack_sz++] = {first, t_min, node_t_max};
+            } else if (visit_second) {
+                stack[stack_sz++] = {second, t_min, node_t_max};
+            }
+        }
+        
+        // Filter out dummy padding points safely
+        if (hit && best_id != static_cast<uint32_t>(-1)) {
+            return RayHit{best_t, best_id};
+        }
+        
+        return std::nullopt;
+    }
+
+    /**
      * @brief Find the single nearest neighbor (1-NN) for a given target.
      * 
      * @param target 3-float array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const float target[3]) const noexcept {
+    std::optional<KnnResult> query_1nn(const std::array<float,3> target) const noexcept {
         if (buckets.empty()) return std::nullopt;
 
         float min_dist_sq = std::numeric_limits<float>::max();
@@ -210,7 +360,7 @@ public:
      *               The size of this span determines 'k'.
      * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
      */
-    std::span<KnnResult> query_knn(const float target[3], std::span<KnnResult> buffer) const noexcept {
+    std::span<KnnResult> query_knn(const std::array<float,3> target, std::span<KnnResult> buffer) const noexcept {
         const size_t k = buffer.size();
         if (buckets.empty() || k == 0) return {};
         

@@ -69,10 +69,10 @@ end
 
 if has_config("with_demo") then
 
-target("render")
+target("render.raymarch")
     set_kind("binary")
     set_languages("cxx23")
-    add_files("./examples/render.cpp")
+    add_files("./examples/render.raymarch.cpp")
     add_deps("kd3")
     add_packages("raylib")
     add_packages("openmp")
@@ -81,4 +81,18 @@ target("render")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
         add_cxflags( "-march=native")
     end
+
+target("render.raytrace")
+    set_kind("binary")
+    set_languages("cxx23")
+    add_files("./examples/render.raytrace.cpp")
+    add_deps("kd3")
+    add_packages("raylib")
+    add_packages("openmp")
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags( "-march=native")
+    end
+
 end

@@ -68,14 +68,14 @@ void run_benchmark_for_leaf(size_t N, int trials, std::vector<BenchmarkResult>& 
         // to max frequency and warm up the L1/L2 caches.
         volatile uint32_t dummy = 0;
         for (size_t i = 0; i < 1000; ++i) {
-            auto res = tree.query_1nn(queries[i % NUM_QUERIES].data());
+            auto res = tree.query_1nn(queries[i % NUM_QUERIES]);
             if (res) dummy += res->payload_id;
         }
 
         // 4. Measure Query Latency (Single Threaded to isolate purely architectural SIMD gains)
         for (size_t i = 0; i < NUM_QUERIES; ++i) {
             auto t0 = std::chrono::high_resolution_clock::now();
-            auto res = tree.query_1nn(queries[i].data());
+            auto res = tree.query_1nn(queries[i]);
             auto t1 = std::chrono::high_resolution_clock::now();
             
             if (res) dummy += res->payload_id; // prevent optimization

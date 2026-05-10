@@ -80,7 +80,7 @@ int main() {
     size_t dummy = 0; // Prevent compiler from optimizing away the loop
     for (const auto& q : queries) {
         std::array<kd3::KnnResult,K> storage{};
-        auto res = tree.query_knn(q.data(), storage);
+        auto res = tree.query_knn(q, storage);
         dummy += res.front().payload_id;
     }
     auto t4 = std::chrono::high_resolution_clock::now();
@@ -98,7 +98,7 @@ int main() {
 
     // Validation Check (Run 1 query against linear scan to verify correctness)
     std::array<kd3::KnnResult,K> storage{};
-    auto kd_res = tree.query_knn(queries[i%1000].data(), storage);
+    auto kd_res = tree.query_knn(queries[i%1000], storage);
     
     auto t5 = std::chrono::high_resolution_clock::now();
     auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);

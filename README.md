@@ -60,7 +60,7 @@ int main() {
 
 ```sh
 xmake f --with_demo=true # This is behind a flag to avoid pulling raylib if you just want to use KD3 as a simple library.
-xmake run render
+xmake run render.raymarch
 ```
 
 ![Screenshot of the raymarching renderer](./assets/screenshot.png)

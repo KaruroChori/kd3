@@ -8,6 +8,7 @@
  * @copyright Copyright (c) 2026
  */
 
+#include <cassert>
 #include <span>
 #include <vector>
 #include <expected>
@@ -40,6 +41,8 @@ private:
     std::vector<float> split_vals;
     std::vector<uint64_t> split_dims;
     std::vector<LeafBucket<LeafSize>> buckets;
+    std::array<float,3> min_root = {-INF,-INF,-INF};
+    std::array<float,3> max_root = {INF,INF,INF};
 
     KdTree(std::vector<float> vals, std::vector<uint64_t> dims, std::vector<LeafBucket<LeafSize>> bks)
         : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)) {}
@@ -60,6 +63,7 @@ private:
         return (left_nodes + 1) / 2;
     }
 
+    template<bool preordered=false>
     struct Builder {
         std::span<Point> temp_pts;
         std::vector<float>& vals;
@@ -124,7 +128,7 @@ private:
             size_t left_points = left_buckets * LeafSize;
             size_t mid = start + left_points;
 
-            nth_element(
+            if constexpr(!preordered)nth_element(
                 temp_pts.begin() + start, 
                 temp_pts.begin() + mid, 
                 temp_pts.begin() + end,
@@ -170,7 +174,38 @@ public:
         std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
         std::vector<LeafBucket<LeafSize>> buckets(B);
 
-        Builder builder{temp_pts, vals, dims, buckets, B};
+        Builder<false> builder{temp_pts, vals, dims, buckets, B};
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                builder.build(0, n, 0, B);
+            }
+        }
+
+        return KdTree(std::move(vals), std::move(dims), std::move(buckets));
+    }
+
+    /**
+     * @brief Builds a kd-tree from a span of points which are assumed to be already ordered.
+     * 
+     * Note: The input span will be mutated (partially sorted) during construction.
+     * 
+     * @param temp_pts Mutable span of points to build the tree from.
+     * @return std::expected<KdTree, KdTreeError> The built tree, or KdTreeError::EmptyInput if the input was empty.
+     */
+    static std::expected<KdTree, KdTreeError> build_from_ordered(std::span<const Point> temp_pts) {
+        if (temp_pts.empty()) return std::unexpected(KdTreeError::EmptyInput);
+
+        size_t n = temp_pts.size();
+        size_t B = (n + LeafSize - 1) / LeafSize; 
+
+        std::vector<float> vals(B > 0 ? B - 1 : 0);
+        std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
+        std::vector<LeafBucket<LeafSize>> buckets(B);
+
+        Builder<true> builder{temp_pts, vals, dims, buckets, B};
 
         #pragma omp parallel
         {
@@ -189,7 +224,7 @@ public:
      * @return KdTreeView<LeafSize> The view of this tree after building.
      */
     KdTreeView<LeafSize> view() const noexcept {
-        return KdTreeView<LeafSize>(split_vals, split_dims, buckets);
+        return KdTreeView<LeafSize>(split_vals, split_dims, buckets, min_root, max_root);
     }
 
     /**
@@ -200,12 +235,25 @@ public:
     }
 
     /**
+     * @brief Forwarding method to find the closest intersection between a ray and points in the Kd-Tree.
+     * 
+     * @param ro 3-float array representing the ray origin.
+     * @param rd 3-float array representing the ray direction.
+     * @param max_t The maximum traversal distance along the ray.
+     * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
+     * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
+     */
+    std::optional<RayHit> query_ray(const std::array<float,3> ro, const std::array<float,3> rl, float max_t=INF, float radius=0.0f) const noexcept {
+        return view().query_ray(ro,rl,max_t,radius);
+    }
+
+    /**
      * @brief Forwarding method to find the single nearest neighbor (1-NN) for a given target.
      * 
      * @param target 3-float array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const float target[3]) const noexcept {
+    std::optional<KnnResult> query_1nn(const std::array<float,3> target) const noexcept {
         return view().query_1nn(target);
     }
 
@@ -216,8 +264,13 @@ public:
      * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
      * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
      */
-    std::span<KnnResult> query_knn(const float target[3], std::span<KnnResult> buffer) const noexcept {
+    std::span<KnnResult> query_knn(const std::array<float,3> target, std::span<KnnResult> buffer) const noexcept {
         return view().query_knn(target, buffer);
+    }
+
+    void set_bbox(std::array<float,3> min, std::array<float,3> max){
+        min_root=min;
+        max_root=max;
     }
 };
 

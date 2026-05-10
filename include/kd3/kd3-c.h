@@ -35,6 +35,15 @@ typedef struct {
 } kd3_knn_result_t;
 
 /**
+ * @brief Matching kd3::RayHit
+ * 
+ */
+typedef struct{ 
+    float t;
+    uint32_t payload_id;
+} kd3_ray_hit_t;
+
+/**
  * @brief Opaque handle to a built kd-tree
  */
 typedef struct kd3_tree_t kd3_tree_t;
