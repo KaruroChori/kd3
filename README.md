@@ -4,7 +4,8 @@ It is not the most complete nor the most flexible, but it is what it needsto be,
 
 ## Features
 
-- **Header-Only:** drop `include/kd3/kd3.hpp` into your project and you are good to go.
+- **Header-Only:** drop `include/kd3/*` into your project and you are good to go.  
+- **Extremely fast!** like for real. k-NN queries are more than [2x](./docs/benchmarking.md) compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
 - **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading (CUDA, SYCL, OpenMP Target) and memory mapped files.
 - **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
 - **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. They are distributed in a standalone header so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
@@ -124,17 +125,41 @@ Make sure you are in release mode to get meaningful results!
 Just for reference, and to calibrate your expectations, benchmarks obtained on my ryzen 5950x
 
 ```
---- KD-Tree HPC Benchmark --- [8]
+--- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
 Generating 5000000 random points...
 Building tree with OpenMP...
-Build Time: 152.121 ms
-Running 100000 queries via KD-Tree...
-KD-Tree Query Time: 155.507 ms (643058 QPS)
+Build Time: 147.218 ms
+-----------------------------------------------------
+Running 100000 10-nn queries via KD-Tree...
+KD-Tree Query Time: 164.895 ms (606447 QPS)
 Validating correctness against linear scan...
 [PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 3.97764 ms
-KD-Tree Speedup vs Brute: 2557.86x faster per query
+Single Brute Force Query: 4.34995 ms
+KD-Tree Speedup vs Brute: 2638.01x faster per query
+-----------------------------------------------------
+Running 100000 1-nn queries via KD-Tree...
+KD-Tree Query Time: 51.2214 ms (1.95231e+06 QPS)
+Validating correctness against linear scan...
+[PASS] KD-Tree results perfectly match brute force.
+Single Brute Force Query: 4.38412 ms
+KD-Tree Speedup vs Brute: 8559.16x faster per query
 ```
+
+and
+
+```
+--- KD-Tree (fast variant) Benchmark --- [simd: 8, parallelism: 32]
+Generating 5000000 random points...
+Building tree with OpenMP...
+Build Time: 141.186 ms
+Running 100000 queries via KD-Tree...
+KD-Tree Query Time: 40.2201 ms (2.48632e+06 QPS)
+Validating correctness against linear scan...
+[FAIL] KD-Tree results differ!
+Single Brute Force Query: 3.43066 ms
+KD-Tree Speedup vs Brute: 8529.74x faster per query
+```
+
 
 and plots!
 

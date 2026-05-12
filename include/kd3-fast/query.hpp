@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace kd3 {
+namespace kd3_fast {
 
 constexpr float INF =  1e15f;
 constexpr float INF2 = 1e29f;
@@ -81,16 +81,6 @@ struct LeafBucket {
     alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float x[LeafSize];
     alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float y[LeafSize];
     alignas(std::min<size_t>(64, SIMD_PARALLELISM*8)) float z[LeafSize];
-    uint32_t ids[LeafSize];
-};
-
-/**
- * @brief Represents a nearest neighbor search result.
- */
-struct KnnResult {
-    float dist_sq;
-    uint32_t payload_id;
-    bool operator<(const KnnResult& o) const { return dist_sq < o.dist_sq; }
 };
 
 // ---------------------------------------------------------
@@ -155,7 +145,7 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
      */
-    std::optional<RayHit> query_ray(const array3 ro, const array3 rd, float max_t = INF, float radius = 0.0f) const noexcept {
+    std::optional<float> query_ray(const array3 ro, const array3 rd, float max_t = INF, float radius = 0.0f) const noexcept {
         if (buckets.empty()) return std::nullopt;
 
 
@@ -278,7 +268,7 @@ public:
         
         // Filter out dummy padding points safely
         if (hit && best_id != static_cast<uint32_t>(-1)) {
-            return RayHit{best_t, best_id};
+            return best_t;
         }
         
         return std::nullopt;
@@ -290,7 +280,7 @@ public:
      * @param target 3-float array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const array3 target) const noexcept {
+    std::optional<float> query_distance(const array3 target) const noexcept {
         if (buckets.empty()) return std::nullopt;
 
         float min_dist_sq = std::numeric_limits<float>::max();
@@ -325,7 +315,6 @@ public:
                 for (size_t i = 0; i < LeafSize; ++i) {
                     if (dists[i] < min_dist_sq) {
                         min_dist_sq = dists[i];
-                        best_id = b.ids[i];
                     }
                 }
                 continue;
@@ -353,99 +342,9 @@ public:
         // or user queried 1e15f explicitly.
         if (min_dist_sq >= INF2) return std::nullopt;
 
-        return KnnResult{min_dist_sq, best_id};
+        return min_dist_sq;
     }
 
-    /**
-     * @brief Find the k-nearest neighbors (k-NN) for a given target.
-     * 
-     * @param target 3-float array representing the query coordinates.
-     * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
-     *               The size of this span determines 'k'.
-     * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
-     */
-    std::span<KnnResult> query_knn(const array3 target, std::span<KnnResult> buffer) const noexcept {
-        const size_t k = buffer.size();
-        if (buckets.empty() || k == 0) return {};
-        
-        size_t heap_size = 0;
-
-        auto push_heap = [&](float dist, uint32_t id) {
-            if (heap_size < k) {
-                buffer[heap_size] = {dist, id};
-                heap_size++;
-                std::push_heap(buffer.begin(), buffer.begin() + heap_size);
-            } else if (dist < buffer.front().dist_sq) {
-                std::pop_heap(buffer.begin(), buffer.begin() + heap_size);
-                buffer[heap_size - 1] = {dist, id};
-                std::push_heap(buffer.begin(), buffer.begin() + heap_size);
-            }
-        };
-
-        struct SearchNode { size_t idx; float min_dist_sq; };
-        SearchNode stack[MAX_STACK_DEPTH]; 
-        size_t stack_sz = 0;
-        stack[stack_sz++] = {0, 0.0f};
-
-        const size_t LEAF_THRESHOLD = buckets.size() - 1;
-
-        while (stack_sz > 0) {
-            auto [curr, node_min_dist] = stack[--stack_sz];
-
-            if (heap_size == k && node_min_dist >= buffer.front().dist_sq) continue;
-
-            if (curr >= LEAF_THRESHOLD) {
-                size_t bucket_idx = curr - LEAF_THRESHOLD;
-                const auto& b = buckets[bucket_idx];
-
-                float dists[LeafSize];
-                
-                for (size_t i = 0; i < LeafSize; ++i) {
-                    float dx = target[0] - b.x[i];
-                    float dy = target[1] - b.y[i];
-                    float dz = target[2] - b.z[i];
-                    dists[i] = dx*dx + dy*dy + dz*dz;
-                }
-
-                for (size_t i = 0; i < LeafSize; ++i) {
-                    push_heap(dists[i], b.ids[i]);
-                }
-                continue;
-            }
-
-            uint8_t dim = get_dim(curr);
-            float split = split_vals[curr];
-
-            float axis_dist = target[dim] - split;
-            float axis_dist_sq = axis_dist * axis_dist;
-            
-            size_t left = 2 * curr + 1;
-            size_t right = 2 * curr + 2;
-
-            size_t first = (axis_dist < 0.0f) ? left : right;
-            size_t second = (axis_dist < 0.0f) ? right : left;
-
-            if (heap_size < k || axis_dist_sq < buffer.front().dist_sq) {
-                stack[stack_sz++] = {second, axis_dist_sq};
-            }
-            stack[stack_sz++] = {first, 0.0f};
-        }
-
-        std::sort(buffer.begin(), buffer.begin() + heap_size);
-        
-        // Filter out pseudo-infinity padded points if the user asked for 
-        // more nearest-neighbors than points exist in the tree
-        size_t valid_results = 0;
-        for (size_t i = 0; i < heap_size; ++i) {
-            if (buffer[i].dist_sq < INF2) {
-                valid_results++;
-            } else {
-                break;
-            }
-        }
-        
-        return buffer.subspan(0, valid_results);
-    }
 };
 
 }

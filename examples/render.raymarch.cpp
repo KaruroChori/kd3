@@ -34,7 +34,7 @@ struct Vec3 {
     Vec3 normalize() const { float l = length(); return l > 0.0f ? (*this * (1.0f / l)) : Vec3{0,0,0}; }
     Vec3 cross(const Vec3& o) const { return {y*o.z - z*o.y, z*o.x - x*o.z, x*o.y - y*o.x}; }
 
-    operator std::array<float,3>(){return {x,y,z};}
+    operator kd3::array3(){return {x,y,z};}
 };
 
 struct AABB {
@@ -339,7 +339,7 @@ int main() {
                         if (root_dist_sq > 0.001f) {
                             res = { std::sqrt(root_dist_sq), {0,1,0} };
                         } else {
-                            std::array<float,3> target = {p.x, p.y, p.z};
+                            kd3::array3 target = {p.x, p.y, p.z};
                             auto knn_opt = view.query_1nn(target);
                             
                             if (knn_opt.has_value()) {

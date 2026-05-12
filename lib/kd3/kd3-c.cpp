@@ -52,7 +52,7 @@ int kd3_tree_query_ray(const kd3_tree_t *tree,
     if (!tree || !out) return 1;
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    auto opt = handle->tree->query_ray(std::array<float,3>{ro[0], ro[1], ro[2]},std::array<float,3>{rd[0], rd[1], rd[2]},max_t,radius);
+    auto opt = handle->tree->query_ray(kd3::array3{ro[0], ro[1], ro[2]},kd3::array3{rd[0], rd[1], rd[2]},max_t,radius);
     if (!opt) return 1;   // empty tree
 
     out->t     = opt->t;
@@ -67,7 +67,7 @@ int kd3_tree_query_1nn(const kd3_tree_t *tree,
     if (!tree || !out) return 1;
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    auto opt = handle->tree->query_1nn(std::array<float,3>{target[0], target[1], target[2]});
+    auto opt = handle->tree->query_1nn(kd3::array3{target[0], target[1], target[2]});
     if (!opt) return 1;   // empty tree
 
     out->dist_sq     = opt->dist_sq;
@@ -83,7 +83,7 @@ size_t kd3_tree_query_knn(const kd3_tree_t *tree,
     if (!tree || k == 0 || !results) return 0;
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    std::span<kd3::KnnResult> cpp_res = handle->tree->query_knn(std::array<float,3>{target[0], target[1], target[2]}, {(kd3::KnnResult*)results,k});
+    std::span<kd3::KnnResult> cpp_res = handle->tree->query_knn(kd3::array3{target[0], target[1], target[2]}, {(kd3::KnnResult*)results,k});
 
     return cpp_res.size();
 }

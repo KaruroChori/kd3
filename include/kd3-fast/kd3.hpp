@@ -19,7 +19,7 @@
 
 #include "query.hpp"
 
-namespace kd3 {
+namespace kd3_fast {
 
 // ---------------------------------------------------------
 // OWNING CONTAINER (Handles Allocations / Builder)
@@ -88,7 +88,6 @@ private:
                     buckets[bucket_idx].x[i] = temp_pts[start + i].coords[0];
                     buckets[bucket_idx].y[i] = temp_pts[start + i].coords[1];
                     buckets[bucket_idx].z[i] = temp_pts[start + i].coords[2];
-                    buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
                 }
                 
                 // Fill the remainder with pseudo-infinity points
@@ -96,7 +95,6 @@ private:
                     buckets[bucket_idx].x[i] = INF; // Extremely far away, 1e15^2 = 1e30 < 3.4e38 (float max)
                     buckets[bucket_idx].y[i] = INF;
                     buckets[bucket_idx].z[i] = INF;
-                    buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
                 }
                 
                 return;
@@ -238,9 +236,9 @@ public:
      * @param rd 3-float array representing the ray direction.
      * @param max_t The maximum traversal distance along the ray.
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
-     * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
+     * @return std::optional<RayHit> Distance of the closest point hit, or std::nullopt if none.
      */
-    std::optional<RayHit> query_ray(const array3 ro, const array3 rl, float max_t=INF, float radius=0.0f) const noexcept {
+    std::optional<float> query_ray(const array3 ro, const array3 rl, float max_t=INF, float radius=0.0f) const noexcept {
         return view().query_ray(ro,rl,max_t,radius);
     }
 
@@ -248,21 +246,10 @@ public:
      * @brief Forwarding method to find the single nearest neighbor (1-NN) for a given target.
      * 
      * @param target 3-float array representing the query coordinates.
-     * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
+     * @return std::optional<float> Distance of the closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const array3 target) const noexcept {
-        return view().query_1nn(target);
-    }
-
-    /**
-     * @brief Forwarding method to find the k-nearest neighbors (k-NN) for a given target.
-     * 
-     * @param target 3-float array representing the query coordinates.
-     * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
-     * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
-     */
-    std::span<KnnResult> query_knn(const array3 target, std::span<KnnResult> buffer) const noexcept {
-        return view().query_knn(target, buffer);
+    std::optional<float> query_distance(const array3 target) const noexcept {
+        return view().query_distance(target);
     }
 
     void set_bbox(array3 min, array3 max){

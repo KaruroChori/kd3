@@ -37,7 +37,7 @@ std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::sp
 int main() {
     using namespace kd3;
     constexpr size_t PARALLELISM = 32;
-    std::cout << "--- KD-Tree HPC Benchmark --- ["<<SIMD_PARALLELISM<<"]\n";
+    std::cout << "--- KD-Tree Benchmark --- [simd: "<<SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
     
     const size_t N_POINTS = 5'000'000;
     const size_t N_QUERIES = 100'000;
@@ -74,54 +74,106 @@ int main() {
         queries[i] = {dist(gen), dist(gen), dist(gen)};
     }
 
+        size_t dummy = 0; // Prevent compiler from optimizing away the loop
+
     // Benchmark KD-Tree
-    std::cout << "Running " << N_QUERIES << " queries via KD-Tree...\n";
-    auto t3 = std::chrono::high_resolution_clock::now();
-    size_t dummy = 0; // Prevent compiler from optimizing away the loop
-    for (const auto& q : queries) {
-        std::array<kd3::KnnResult,K> storage{};
-        auto res = tree.query_knn(q, storage);
-        dummy += res.front().payload_id;
-    }
-    auto t4 = std::chrono::high_resolution_clock::now();
-    
-    double kd_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
-    std::cout << "KD-Tree Query Time: " << kd_ms << " ms (" 
-              << (N_QUERIES / (kd_ms / 1000.0)) << " QPS)\n";
-
-    bool correct = true;
-    double linear_ms = 0;
-
-    std::cout << "Validating correctness against linear scan...\n";
-
-    for(int i=0;i<N_QUERIES/1000;i++){
-
-    // Validation Check (Run 1 query against linear scan to verify correctness)
-    std::array<kd3::KnnResult,K> storage{};
-    auto kd_res = tree.query_knn(queries[i%1000], storage);
-    
-    auto t5 = std::chrono::high_resolution_clock::now();
-    auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);
-    auto t6 = std::chrono::high_resolution_clock::now();
-    
-    linear_ms += std::chrono::duration<double, std::milli>(t6 - t5).count();
-    
-    for (size_t i = 0; i < K; ++i) {
-        // Due to floating point math eps errors, check ID instead of exact distance match
-        if (kd_res[i].payload_id != brute_res[i].payload_id) {
-            correct = false;
+    if(K!=1){
+        std::cout << "-----------------------------------------------------\n";
+        std::cout << "Running " << N_QUERIES << " "<<K<<"-nn queries via KD-Tree...\n";
+        auto t3 = std::chrono::high_resolution_clock::now();
+        for (const auto& q : queries) {
+            std::array<kd3::KnnResult,K> storage{};
+            auto res = tree.query_knn(q, storage);
+            dummy += res.front().payload_id;
         }
-    }
+        auto t4 = std::chrono::high_resolution_clock::now();
+        
+        double kd_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
+        std::cout << "KD-Tree Query Time: " << kd_ms << " ms (" 
+                << (N_QUERIES / (kd_ms / 1000.0)) << " QPS)\n";
+
+        bool correct = true;
+        double linear_ms = 0;
+
+        std::cout << "Validating correctness against linear scan...\n";
+
+        for(int i=0;i<N_QUERIES/1000;i++){
+
+        // Validation Check (Run 1 query against linear scan to verify correctness)
+        std::array<kd3::KnnResult,K> storage{};
+        auto kd_res = tree.query_knn(queries[i%1000], storage);
+        
+        auto t5 = std::chrono::high_resolution_clock::now();
+        auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);
+        auto t6 = std::chrono::high_resolution_clock::now();
+        
+        linear_ms += std::chrono::duration<double, std::milli>(t6 - t5).count();
+        
+        for (size_t i = 0; i < K; ++i) {
+            // Due to floating point math eps errors, check ID instead of exact distance match
+            if (kd_res[i].payload_id != brute_res[i].payload_id) {
+                correct = false;
+            }
+        }
+        }
+
+        if (correct) {
+            std::cout << "[PASS] KD-Tree results perfectly match brute force.\n";
+        } else {
+            std::cout << "[FAIL] KD-Tree results differ!\n";
+        }
+
+        std::cout << "Single Brute Force Query: " << linear_ms/(N_QUERIES/1000.0) << " ms\n";
+        std::cout << "KD-Tree Speedup vs Brute: " << (linear_ms/(N_QUERIES/1000.0) / (kd_ms / N_QUERIES)) << "x faster per query\n";
     }
 
-    if (correct) {
-        std::cout << "[PASS] KD-Tree results perfectly match brute force.\n";
-    } else {
-        std::cout << "[FAIL] KD-Tree results differ!\n";
+    {
+        std::cout << "-----------------------------------------------------\n";
+        std::cout << "Running " << N_QUERIES << " 1-nn queries via KD-Tree...\n";
+        auto t3 = std::chrono::high_resolution_clock::now();
+        for (const auto& q : queries) {
+            auto res = tree.query_1nn(q);
+            dummy += res->payload_id;
+        }
+        auto t4 = std::chrono::high_resolution_clock::now();
+        
+        double kd_ms = std::chrono::duration<double, std::milli>(t4 - t3).count();
+        std::cout << "KD-Tree Query Time: " << kd_ms << " ms (" 
+                << (N_QUERIES / (kd_ms / 1000.0)) << " QPS)\n";
+
+        bool correct = true;
+        double linear_ms = 0;
+
+        std::cout << "Validating correctness against linear scan...\n";
+
+        for(int i=0;i<N_QUERIES/1000;i++){
+
+        // Validation Check (Run 1 query against linear scan to verify correctness)
+        std::array<kd3::KnnResult,K> storage{};
+        auto kd_res = tree.query_knn(queries[i%1000], storage);
+        
+        auto t5 = std::chrono::high_resolution_clock::now();
+        auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);
+        auto t6 = std::chrono::high_resolution_clock::now();
+        
+        linear_ms += std::chrono::duration<double, std::milli>(t6 - t5).count();
+        
+        for (size_t i = 0; i < K; ++i) {
+            // Due to floating point math eps errors, check ID instead of exact distance match
+            if (kd_res[i].payload_id != brute_res[i].payload_id) {
+                correct = false;
+            }
+        }
+        }
+
+        if (correct) {
+            std::cout << "[PASS] KD-Tree results perfectly match brute force.\n";
+        } else {
+            std::cout << "[FAIL] KD-Tree results differ!\n";
+        }
+
+        std::cout << "Single Brute Force Query: " << linear_ms/(N_QUERIES/1000.0) << " ms\n";
+        std::cout << "KD-Tree Speedup vs Brute: " << (linear_ms/(N_QUERIES/1000.0) / (kd_ms / N_QUERIES)) << "x faster per query\n";
     }
-
-    std::cout << "Single Brute Force Query: " << linear_ms/(N_QUERIES/1000.0) << " ms\n";
-    std::cout << "KD-Tree Speedup vs Brute: " << (linear_ms/(N_QUERIES/1000.0) / (kd_ms / N_QUERIES)) << "x faster per query\n";
-
     return dummy == 0 ? 1 : 0;
 }

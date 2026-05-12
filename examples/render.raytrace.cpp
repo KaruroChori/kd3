@@ -34,7 +34,7 @@ struct Vec3 {
     Vec3 normalize() const { float l = length(); return l > 0.0f ? (*this * (1.0f / l)) : Vec3{0,0,0}; }
     Vec3 cross(const Vec3& o) const { return {y*o.z - z*o.y, z*o.x - x*o.z, x*o.y - y*o.x}; }
 
-    operator std::array<float,3>(){return {x,y,z};}
+    operator kd3::array3(){return {x,y,z};}
 };
 
 struct AABB {
@@ -292,8 +292,8 @@ int main() {
                     float v = (2.0f * ((H - y - 1) + 0.5f) - H) / H;
                     Vec3 rd = (uu*u + vv*v + ww).normalize();
 
-                    std::array<float,3> ro_arr = {ro.x, ro.y, ro.z};
-                    std::array<float,3> rd_arr = {rd.x, rd.y, rd.z};
+                    kd3::array3 ro_arr = {ro.x, ro.y, ro.z};
+                    kd3::array3 rd_arr = {rd.x, rd.y, rd.z};
 
                     // Direct CPU Raycast traversal! No distance sphere-marching needed!
                     auto hit_opt = view.query_ray(ro_arr, rd_arr, 1000.0f, 0.01f);

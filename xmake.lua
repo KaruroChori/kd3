@@ -29,6 +29,18 @@ target("benchmarks")
     end
     set_default(false)
 
+target("benchmarks.fast")
+    set_kind("binary")
+    add_files("examples/benchmarks-fast.cpp")
+    add_includedirs("include", {public=true})    
+    add_packages("openmp")
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags("-ffast-math", "-march=native")
+    end
+    set_default(false)
+
 target("c-interface")
     set_kind("binary")
     add_files("examples/c-interface.c")
@@ -65,9 +77,24 @@ option_end()
 if has_config("with_demo") then
     add_requires("raylib", { configs = { cxflags = "-DGRAPHICS_API_OPENGL_43" } })
     add_requires("glm")
+    add_requires("nanoflann")
 end
 
 if has_config("with_demo") then
+
+target("nanoflann")
+    set_kind("binary")
+    set_languages("cxx23")
+    add_files("./examples/nanoflann.cpp")
+    add_deps("kd3")
+    add_packages("nanoflann")
+    add_packages("openmp")
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags( "-march=native")
+    end
+
 
 target("render.raymarch")
     set_kind("binary")
