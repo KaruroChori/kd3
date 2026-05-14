@@ -43,9 +43,9 @@ int main() {
     using namespace kd3;
     std::cout << "--- KD-Tree Benchmark --- [simd: "<<TreeType::cfg.SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
     
-    const size_t N_POINTS = 5'000'000;
-    const size_t N_QUERIES = 100'000;
-    const size_t K = 10;
+    constexpr size_t N_POINTS = 5'000'000;
+    constexpr size_t N_QUERIES = 100'000;
+    constexpr size_t K = 10;
 
     std::random_device rd;
     std::mt19937 gen(1337); // Fixed seed for reproducibility
@@ -73,7 +73,7 @@ int main() {
     std::cout << "Build Time: " << build_ms << " ms\n";
 
     // Generate Queries
-    std::vector<std::array<TreeType::scalar_t, 3>> queries(N_QUERIES);
+    std::vector<TreeType::point_t> queries(N_QUERIES);
     for (size_t i = 0; i < N_QUERIES; ++i) {
         queries[i] = {static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen))};
     }
@@ -165,7 +165,7 @@ int main() {
         for (size_t i = 0; i < K; ++i) {
             // Due to floating point math eps errors, check ID instead of exact distance match
             if (kd_res[i].payload_id != brute_res[i].payload_id) {
-                printf("OOOO\n");
+                //printf("OOOO %d %d ; %d %d\n",kd_res[i].payload_id, brute_res[i].payload_id, kd_res[i].dist_sq, brute_res[i].dist_sq);
                 correct = false;
             }
         }

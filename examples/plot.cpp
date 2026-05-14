@@ -8,6 +8,7 @@
  * 
  */
 
+#include "kd3/query.hpp"
 #include <vector>
 #include <chrono>
 #include <random>
@@ -17,6 +18,7 @@
 #include <iomanip>
 
 #include <kd3/kd3.hpp>
+
 
 struct BenchmarkResult {
     size_t tree_size;
@@ -28,6 +30,7 @@ struct BenchmarkResult {
 template <size_t L>
 void run_benchmark_for_leaf(size_t N, int trials, std::vector<BenchmarkResult>& results) {
     using namespace kd3;
+    using TreeType = kd3::KdTree<kd3::limits<float>, {.LeafSize=L}>;
     
     std::random_device rd;
     std::mt19937 gen(42);
@@ -42,14 +45,14 @@ void run_benchmark_for_leaf(size_t N, int trials, std::vector<BenchmarkResult>& 
 
     for (int trial = 0; trial < trials; ++trial) {
         // 1. Generate Points
-        std::vector<Point> points(N);
+        std::vector<typename TreeType::FatPoint> points(N);
         for (size_t i = 0; i < N; ++i) {
             points[i] = {{dist(gen), dist(gen), dist(gen)}, static_cast<uint32_t>(i)};
         }
 
         // 2. Measure Build Time
         auto tb0 = std::chrono::high_resolution_clock::now();
-        auto tree_expected = KdTree<L>::build(points);
+        auto tree_expected = TreeType::build(points);
         auto tb1 = std::chrono::high_resolution_clock::now();
         
         if (!tree_expected) continue;

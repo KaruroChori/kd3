@@ -143,6 +143,9 @@ private:
                 temp_pts.begin() + end,
                 [best_dim](const FatPoint& a, const FatPoint& b) {
                     return a.coords[best_dim] < b.coords[best_dim];
+                    //if(a.coords[best_dim] < b.coords[best_dim]) return true;
+                    //else if(a.coords[best_dim] > b.coords[best_dim])return false;
+                    //else [[unlikely]] return (a.payload_id < b.payload_id);
                 }
             );
 

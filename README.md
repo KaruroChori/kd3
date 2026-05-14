@@ -20,16 +20,18 @@ It is not the most complete nor the most flexible, but it is what it needsto be,
 #include <vector>
 #include <array>
 
+using TreeType = kd3::KdTree<kd3::limits<float>, {.LeafSize=32}>;
+
 int main() {
     // 1. Prepare your data
-    std::vector<kd3::Point> points = {
+    std::vector<TreeType::FatPoint> points = {
         {{0.0f, 0.0f, 0.0f}, 100},
         {{1.0f, 2.5f, -3.0f}, 101},
         {{4.2f, -1.0f, 0.0f}, 102}
     };
 
     // 2. Build the tree (mutates the input array to sort points)
-    auto tree_expected = kd3::KdTree<>::build(points);
+    auto tree_expected = TreeType::build(points);
     if (!tree_expected) {
         std::cerr << "Failed to build tree!\n";
         return 1;
@@ -37,7 +39,7 @@ int main() {
     const auto& tree = *tree_expected;
 
     // 3. Query 1-Nearest Neighbor
-    float target[3] = {1.0f, 2.0f, -2.0f};
+    TreeType::point_t target = {1.0f, 2.0f, -2.0f};
     auto result = tree.query_1nn(target);
     
     if (result) {
@@ -46,7 +48,7 @@ int main() {
     }
 
     // 4. Query K-Nearest Neighbors
-    std::array<kd3::KnnResult, 2> knn_buffer{};
+    std::array<TreeType::KnnResult, 2> knn_buffer{};
     auto knn_results = tree.query_knn(target, knn_buffer);
     
     for (const auto& res : knn_results) {
@@ -89,13 +91,13 @@ Oh, and GCC seems to be winning in terms of optimizations, something like 15% fa
 `kd3` makes use of `nth_element` and `sort` from the standard library.  
 This is because none of the hand-made or well-known third-party variants publicly available resulted in better performance while testing.  
 If you want to try out something else, or if you don't trust your end user to have a good C++ standard library on their systems, shipping your own is probably best.  
-And you probably want to have OpenMP on your system, or at the very least a [stub replacement](https://github.com/KaruroChori/omp-stub).
+The only other dependency is having OpenMP support on your system, or at the very least a [stub replacement](https://github.com/KaruroChori/omp-stub).
 
-`kd3` requires C++23 to compile; it could be implemented for older versions but honestly, I cannot be bothered.
+`kd3` requires C++23 to compile; it could be implemented for older versions, but honestly I cannot be bothered.
 
 ## Compile flags
 
-This project is packaged to be used via `xmake`, but it is just a single file header if you work in C++, so feel free to copy it in your project as long as you carry over the licence.
+This project is packaged to be used via `xmake`, although using it is as a simple header library is totally fine while working from C++, so feel free to copy it in your project as long as licence and attribution is carried over.
 
 - `KD3_SIMD_PARALLELISM` to override the default parallism level, based on your architecture.
 - `KD3_EXCEPTIONS_ENABLED` if you really want to force exceptions on and off, but using compiler flags is better.

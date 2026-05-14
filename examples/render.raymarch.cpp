@@ -20,6 +20,8 @@
 
 #include <kd3/kd3.hpp>
 
+using TreeType = kd3::KdTree<kd3::limits<float>,{.LeafSize=32}>;
+
 // ---------------------------------------------------------
 // Core Math & Geometry
 // ---------------------------------------------------------
@@ -34,7 +36,7 @@ struct Vec3 {
     Vec3 normalize() const { float l = length(); return l > 0.0f ? (*this * (1.0f / l)) : Vec3{0,0,0}; }
     Vec3 cross(const Vec3& o) const { return {y*o.z - z*o.y, z*o.x - x*o.z, x*o.y - y*o.x}; }
 
-    operator kd3::point_t(){return {x,y,z};}
+    operator TreeType::point_t(){return {x,y,z};}
 };
 
 struct AABB {
@@ -217,7 +219,7 @@ int main() {
     std::cout << "Points generated: " << master_points.size() << "\n\n";
 
     // 1. Prepare points for kd3
-    std::vector<kd3::Point> build_points(master_points.size());
+    std::vector<TreeType::FatPoint> build_points(master_points.size());
     for (size_t i = 0; i < master_points.size(); ++i) {
         build_points[i].coords[0] = master_points[i].position.x;
         build_points[i].coords[1] = master_points[i].position.y;
@@ -227,12 +229,12 @@ int main() {
 
     // 2. Build KdTree natively utilizing LeafSize = 8 for 1:1 GLSL SSBO matching
     auto t1 = std::chrono::high_resolution_clock::now();
-    auto tree_expected = kd3::KdTree<32>::build(build_points);
+    auto tree_expected = TreeType::build(build_points);
     if (!tree_expected) {
         std::cerr << "Failed to build tree! Empty input?\n";
         return 1;
     }
-    kd3::KdTree<32> kdtree = std::move(tree_expected.value());
+    TreeType kdtree = std::move(tree_expected.value());
     auto t2 = std::chrono::high_resolution_clock::now();
     std::cout << "KdTree Built in: " 
               << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() 
@@ -269,7 +271,7 @@ int main() {
     unsigned int surfel_ssbo = rlLoadShaderBuffer(g_surfels.size() * sizeof(GpuSurfel), g_surfels.data(), RL_DYNAMIC_DRAW);
     unsigned int vals_ssbo   = rlLoadShaderBuffer(view.split_vals.size() * sizeof(float), (void*)view.split_vals.data(), RL_DYNAMIC_DRAW);
     unsigned int dims_ssbo   = rlLoadShaderBuffer(view.split_dims.size() * sizeof(uint64_t), (void*)view.split_dims.data(), RL_DYNAMIC_DRAW);
-    unsigned int bks_ssbo    = rlLoadShaderBuffer(view.buckets.size() * sizeof(kd3::LeafBucket<32>), (void*)view.buckets.data(), RL_DYNAMIC_DRAW);
+    unsigned int bks_ssbo    = rlLoadShaderBuffer(view.buckets.size() * sizeof(TreeType::LeafBucket), (void*)view.buckets.data(), RL_DYNAMIC_DRAW);
 
     std::vector<Color> fb(W * H);
     Image img = { fb.data(), W, H, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
@@ -339,7 +341,7 @@ int main() {
                         if (root_dist_sq > 0.001f) {
                             res = { std::sqrt(root_dist_sq), {0,1,0} };
                         } else {
-                            kd3::point_t target = {p.x, p.y, p.z};
+                            TreeType::point_t target = {p.x, p.y, p.z};
                             auto knn_opt = view.query_1nn(target);
                             
                             if (knn_opt.has_value()) {

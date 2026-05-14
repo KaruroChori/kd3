@@ -9,10 +9,13 @@
 #include <span>
 #include <array>
 
+using TreeType = kd3::KdTree<kd3::limits<float>>;
+
+
 struct Kd3PointAdaptor {
-    const std::vector<kd3::Point>& pts;
+    const std::vector<TreeType::FatPoint>& pts;
     
-    Kd3PointAdaptor(const std::vector<kd3::Point>& pts) : pts(pts) {}
+    Kd3PointAdaptor(const std::vector<TreeType::FatPoint>& pts) : pts(pts) {}
     
     inline size_t kdtree_get_point_count() const { 
         return pts.size(); 
@@ -31,15 +34,15 @@ struct Kd3PointAdaptor {
 // ---------------------------------------------------------
 // Baseline Brute Force validation
 // ---------------------------------------------------------
-std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::span<const kd3::Point> points) {
-    std::vector<kd3::KnnResult> heap;
+std::vector<TreeType::KnnResult> linear_scan(const TreeType::scalar_t target[3], size_t k, std::span<const TreeType::FatPoint> points) {
+    std::vector<TreeType::KnnResult> heap;
     heap.reserve(k + 1);
     for (const auto& p : points) {
-        float dx = target[0] - p.coords[0];
-        float dy = target[1] - p.coords[1];
-        float dz = target[2] - p.coords[2];
-        float dist_sq = dx*dx + dy*dy + dz*dz;
-
+        TreeType::distance_t dx = target[0] - p.coords[0];
+        TreeType::distance_t dy = target[1] - p.coords[1];
+        TreeType::distance_t dz = target[2] - p.coords[2];
+        TreeType::distance_t dist_sq = dx*dx + dy*dy + dz*dz;
+        
         if (heap.size() < k) {
             heap.push_back({dist_sq, p.payload_id});
             std::push_heap(heap.begin(), heap.end());
@@ -53,30 +56,31 @@ std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::sp
     return heap;
 }
 
+
 // ---------------------------------------------------------
 // Benchmarking Suite
 // ---------------------------------------------------------
 int main() {
     using namespace kd3;
     constexpr size_t PARALLELISM = 32;
-    std::cout << "--- KD-Tree Benchmark --- [" << SIMD_PARALLELISM << "]\n";
+    std::cout << "--- KD-Tree Benchmark --- [simd: "<<TreeType::cfg.SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
 
-    const size_t N_POINTS = 5'000'000;
-    const size_t N_QUERIES = 100'000;
-    const size_t K = 100;
+    constexpr size_t N_POINTS = 5'000'000;
+    constexpr size_t N_QUERIES = 100'000;
+    constexpr size_t K = 100;
 
     std::random_device rd;
     std::mt19937 gen(1337); // Fixed seed for reproducibility
     std::uniform_real_distribution<float> dist(-1000.0f, 1000.0f);
 
     std::cout << "Generating " << N_POINTS << " random points...\n";
-    std::vector<Point> raw_points(N_POINTS);
+    std::vector<TreeType::FatPoint> raw_points(N_POINTS);
     for (size_t i = 0; i < N_POINTS; ++i) {
         raw_points[i] = {{dist(gen), dist(gen), dist(gen)}, static_cast<uint32_t>(i)};
     }
 
     // Copy for baseline verification & nanoflann (in case kd3::build mutates raw_points)
-    std::vector<Point> points_copy = raw_points; 
+    std::vector<TreeType::FatPoint> points_copy = raw_points; 
 
     // ---------------------------------------------------------
     // 1. Build Phase
@@ -85,7 +89,7 @@ int main() {
     
     // kd3 Build
     auto t1 = std::chrono::high_resolution_clock::now();
-    auto tree_result = KdTree<PARALLELISM>::build(raw_points);
+    auto tree_result = TreeType::build(raw_points);
     auto t2 = std::chrono::high_resolution_clock::now();
     if (!tree_result) { std::cerr << "kd3 Build failed!\n"; return 1; }
     const auto& tree = *tree_result;
@@ -110,7 +114,7 @@ int main() {
     std::cout << "nanoflann Build Time: " << nf_build_ms << " ms\n";
 
     // Generate Queries
-    std::vector<std::array<float, 3>> queries(N_QUERIES);
+    std::vector<TreeType::point_t> queries(N_QUERIES);
     for (size_t i = 0; i < N_QUERIES; ++i) {
         queries[i] = {dist(gen), dist(gen), dist(gen)};
     }
@@ -124,7 +128,7 @@ int main() {
     auto t3 = std::chrono::high_resolution_clock::now();
     size_t dummy_kd3 = 0;
     for (const auto& q : queries) {
-        std::array<kd3::KnnResult, K> storage{};
+        std::array<TreeType::KnnResult, K> storage{};
         auto res = tree.query_knn(q, storage);
         dummy_kd3 += res.front().payload_id;
     }
@@ -169,7 +173,7 @@ int main() {
         const auto& q = queries[i % 1000];
 
         // 1. Run kd3
-        std::array<kd3::KnnResult, K> storage{};
+        std::array<TreeType::KnnResult, K> storage{};
         auto kd_res = tree.query_knn(q, storage);
 
         // 2. Run Nanoflann
