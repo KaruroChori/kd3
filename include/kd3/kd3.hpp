@@ -8,7 +8,6 @@
  * @copyright Copyright (c) 2026
  */
 
-#include <cassert>
 #include <span>
 #include <vector>
 #include <expected>

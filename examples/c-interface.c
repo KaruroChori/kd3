@@ -1,4 +1,5 @@
 #include <kd3/kd3-c.h>
+
 #include <stdio.h>
 
 int main(){
@@ -10,13 +11,15 @@ int main(){
         /* … add further entries … */
     };
 
-    int error=0;
+    kd3_error_t error=0;
     auto tree = kd3_tree_create(points, sizeof(points)/sizeof(kd3_point_t), &error);
     if(error==0){
-        kd3_knn_result_t storage[1];
+        kd3_knn_result_t storage[3];
         const float point[3] = {100,2,0};
-        int found = kd3_tree_query_knn(tree, point, storage, 1);
-        for(int i=0;i<found;i++){
+        size_t items = 3;
+        kd3_error_t found = kd3_tree_query_knn(tree, point, storage, &items);
+        //Ignore the possible error for now...
+        for(int i=0;i<items;i++){
             auto point = points[storage[i].payload_id].coords;
             printf("(%f,%f,%f)\n", point[0],point[1],point[2]);
         }
