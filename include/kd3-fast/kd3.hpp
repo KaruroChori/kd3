@@ -38,8 +38,8 @@ private:
     std::vector<float> split_vals;
     std::vector<uint64_t> split_dims;
     std::vector<LeafBucket<LeafSize>> buckets;
-    array3 min_root = {-INF,-INF,-INF};
-    array3 max_root = {INF,INF,INF};
+    point_t min_root = {-INF,-INF,-INF};
+    point_t max_root = {INF,INF,INF};
 
     KdTree(std::vector<float> vals, std::vector<uint64_t> dims, std::vector<LeafBucket<LeafSize>> bks)
         : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)) {}
@@ -157,10 +157,10 @@ public:
      * Note: The input span will be mutated (partially sorted) during construction.
      * 
      * @param temp_pts Mutable span of points to build the tree from.
-     * @return std::expected<KdTree, KdTreeError> The built tree, or KdTreeError::EmptyInput if the input was empty.
+     * @return std::expected<KdTree, error_t> The built tree, or error_t::EmptyInput if the input was empty.
      */
-    static std::expected<KdTree, KdTreeError> build(std::span<Point> temp_pts) {
-        if (temp_pts.empty()) return std::unexpected(KdTreeError::EmptyInput);
+    static std::expected<KdTree, error_t> build(std::span<Point> temp_pts) {
+        if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
         size_t B = (n + LeafSize - 1) / LeafSize; 
@@ -188,10 +188,10 @@ public:
      * Note: The input span will be mutated (partially sorted) during construction.
      * 
      * @param temp_pts Mutable span of points to build the tree from.
-     * @return std::expected<KdTree, KdTreeError> The built tree, or KdTreeError::EmptyInput if the input was empty.
+     * @return std::expected<KdTree, error_t> The built tree, or error_t::EmptyInput if the input was empty.
      */
-    static std::expected<KdTree, KdTreeError> build_from_ordered(std::span<const Point> temp_pts) {
-        if (temp_pts.empty()) return std::unexpected(KdTreeError::EmptyInput);
+    static std::expected<KdTree, error_t> build_from_ordered(std::span<const Point> temp_pts) {
+        if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
         size_t B = (n + LeafSize - 1) / LeafSize; 
@@ -238,7 +238,7 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return std::optional<RayHit> Distance of the closest point hit, or std::nullopt if none.
      */
-    std::optional<float> query_ray(const array3 ro, const array3 rl, float max_t=INF, float radius=0.0f) const noexcept {
+    std::optional<float> query_ray(const point_t ro, const point_t rl, float max_t=INF, float radius=0.0f) const noexcept {
         return view().query_ray(ro,rl,max_t,radius);
     }
 
@@ -248,11 +248,11 @@ public:
      * @param target 3-float array representing the query coordinates.
      * @return std::optional<float> Distance of the closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<float> query_distance(const array3 target) const noexcept {
+    std::optional<float> query_distance(const point_t target) const noexcept {
         return view().query_distance(target);
     }
 
-    void set_bbox(array3 min, array3 max){
+    void set_bbox(point_t min, point_t max){
         min_root=min;
         max_root=max;
     }

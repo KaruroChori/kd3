@@ -6,17 +6,22 @@
 #include <random>
 #include <iostream>
 
+constexpr size_t PARALLELISM = 32;
+
+using Type = int16_t;
+using TreeType = kd3::KdTree<kd3::limits<Type>,{.LeafSize=PARALLELISM*sizeof(float)/sizeof(Type)}>;
+
 // ---------------------------------------------------------
 // Baseline Brute Force validation
 // ---------------------------------------------------------
-std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::span<const kd3::Point> points) {
-    std::vector<kd3::KnnResult> heap;
+std::vector<TreeType::KnnResult> linear_scan(const TreeType::scalar_t target[3], size_t k, std::span<const TreeType::FatPoint> points) {
+    std::vector<TreeType::KnnResult> heap;
     heap.reserve(k + 1);
     for (const auto& p : points) {
-        float dx = target[0] - p.coords[0];
-        float dy = target[1] - p.coords[1];
-        float dz = target[2] - p.coords[2];
-        float dist_sq = dx*dx + dy*dy + dz*dz;
+        TreeType::distance_t dx = target[0] - p.coords[0];
+        TreeType::distance_t dy = target[1] - p.coords[1];
+        TreeType::distance_t dz = target[2] - p.coords[2];
+        TreeType::distance_t dist_sq = dx*dx + dy*dy + dz*dz;
         
         if (heap.size() < k) {
             heap.push_back({dist_sq, p.payload_id});
@@ -36,8 +41,7 @@ std::vector<kd3::KnnResult> linear_scan(const float target[3], size_t k, std::sp
 // ---------------------------------------------------------
 int main() {
     using namespace kd3;
-    constexpr size_t PARALLELISM = 32;
-    std::cout << "--- KD-Tree Benchmark --- [simd: "<<SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
+    std::cout << "--- KD-Tree Benchmark --- [simd: "<<TreeType::cfg.SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
     
     const size_t N_POINTS = 5'000'000;
     const size_t N_QUERIES = 100'000;
@@ -48,18 +52,18 @@ int main() {
     std::uniform_real_distribution<float> dist(-1000.0f, 1000.0f);
 
     std::cout << "Generating " << N_POINTS << " random points...\n";
-    std::vector<Point> raw_points(N_POINTS);
+    std::vector<TreeType::FatPoint> raw_points(N_POINTS);
     for (size_t i = 0; i < N_POINTS; ++i) {
-        raw_points[i] = {{dist(gen), dist(gen), dist(gen)}, static_cast<uint32_t>(i)};
+        raw_points[i] = {{static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen))}, static_cast<uint32_t>(i)};
     }
     
     // Copy for baseline verification
-    std::vector<Point> points_copy = raw_points; 
+    std::vector<TreeType::FatPoint> points_copy = raw_points; 
 
     // Benchmark Build
     std::cout << "Building tree with OpenMP...\n";
     auto t1 = std::chrono::high_resolution_clock::now();
-    auto tree_result = KdTree<PARALLELISM>::build(raw_points);
+    auto tree_result = TreeType::build(raw_points);
     auto t2 = std::chrono::high_resolution_clock::now();
     
     if (!tree_result) { std::cerr << "Build failed!\n"; return 1; }
@@ -69,9 +73,9 @@ int main() {
     std::cout << "Build Time: " << build_ms << " ms\n";
 
     // Generate Queries
-    std::vector<std::array<float, 3>> queries(N_QUERIES);
+    std::vector<std::array<TreeType::scalar_t, 3>> queries(N_QUERIES);
     for (size_t i = 0; i < N_QUERIES; ++i) {
-        queries[i] = {dist(gen), dist(gen), dist(gen)};
+        queries[i] = {static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen)), static_cast<TreeType::scalar_t>(dist(gen))};
     }
 
         size_t dummy = 0; // Prevent compiler from optimizing away the loop
@@ -82,7 +86,7 @@ int main() {
         std::cout << "Running " << N_QUERIES << " "<<K<<"-nn queries via KD-Tree...\n";
         auto t3 = std::chrono::high_resolution_clock::now();
         for (const auto& q : queries) {
-            std::array<kd3::KnnResult,K> storage{};
+            std::array<TreeType::KnnResult,K> storage{};
             auto res = tree.query_knn(q, storage);
             dummy += res.front().payload_id;
         }
@@ -100,7 +104,7 @@ int main() {
         for(int i=0;i<N_QUERIES/1000;i++){
 
         // Validation Check (Run 1 query against linear scan to verify correctness)
-        std::array<kd3::KnnResult,K> storage{};
+        std::array<TreeType::KnnResult,K> storage{};
         auto kd_res = tree.query_knn(queries[i%1000], storage);
         
         auto t5 = std::chrono::high_resolution_clock::now();
@@ -149,7 +153,7 @@ int main() {
         for(int i=0;i<N_QUERIES/1000;i++){
 
         // Validation Check (Run 1 query against linear scan to verify correctness)
-        std::array<kd3::KnnResult,K> storage{};
+        std::array<TreeType::KnnResult,K> storage{};
         auto kd_res = tree.query_knn(queries[i%1000], storage);
         
         auto t5 = std::chrono::high_resolution_clock::now();
@@ -161,6 +165,7 @@ int main() {
         for (size_t i = 0; i < K; ++i) {
             // Due to floating point math eps errors, check ID instead of exact distance match
             if (kd_res[i].payload_id != brute_res[i].payload_id) {
+                printf("OOOO\n");
                 correct = false;
             }
         }

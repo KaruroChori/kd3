@@ -32,16 +32,28 @@ namespace kd3 {
  * 
  * @tparam LeafSize The number of elements packed into each SIMD-friendly leaf.
  */
-template <size_t LeafSize = SIMD_PARALLELISM>
+template <typename Limits=limits<default_scalar_t>, cfg_t _cfg = {}>
 class KdTree {
-private:
-    std::vector<float> split_vals;
-    std::vector<uint64_t> split_dims;
-    std::vector<LeafBucket<LeafSize>> buckets;
-    array3 min_root = {-INF,-INF,-INF};
-    array3 max_root = {INF,INF,INF};
+public:
+    constexpr static cfg_t cfg = _cfg;
 
-    KdTree(std::vector<float> vals, std::vector<uint64_t> dims, std::vector<LeafBucket<LeafSize>> bks)
+    using scalar_t = Limits::scalar_t;
+    using distance_t = Limits::distance_t;
+    using point_t = Limits::point_t;
+    using RayHit = Limits::RayHit;
+    using FatPoint = Limits::FatPoint;
+    using KnnResult = Limits::KnnResult;
+    using LeafBucket = KdTreeView<Limits,cfg>::LeafBucket;
+    using error_t = KdTreeView<Limits,cfg>::error_t;
+
+private:
+    std::vector<scalar_t> split_vals;
+    std::vector<uint64_t> split_dims;
+    std::vector<LeafBucket> buckets;
+    point_t min_root = {-Limits::INF,-Limits::INF,-Limits::INF};
+    point_t max_root = {Limits::INF,Limits::INF,Limits::INF};
+
+    KdTree(std::vector<scalar_t> vals, std::vector<uint64_t> dims, std::vector<LeafBucket> bks)
         : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)) {}
 
     static constexpr size_t calc_left_nodes(size_t n) noexcept {
@@ -62,10 +74,10 @@ private:
 
     template<bool preordered=false>
     struct Builder {
-        std::span<Point> temp_pts;
-        std::vector<float>& vals;
+        std::span<FatPoint> temp_pts;
+        std::vector<scalar_t>& vals;
         std::vector<uint64_t>& dims;
-        std::vector<LeafBucket<LeafSize>>& buckets;
+        std::vector<LeafBucket>& buckets;
         size_t B;
 
         inline void set_dim(size_t i, uint8_t dim) {
@@ -92,18 +104,18 @@ private:
                 }
                 
                 // Fill the remainder with pseudo-infinity points
-                for (size_t i = size; i < LeafSize; ++i) {
-                    buckets[bucket_idx].x[i] = INF; // Extremely far away, 1e15^2 = 1e30 < 3.4e38 (float max)
-                    buckets[bucket_idx].y[i] = INF;
-                    buckets[bucket_idx].z[i] = INF;
+                for (size_t i = size; i < cfg.LeafSize; ++i) {
+                    buckets[bucket_idx].x[i] = Limits::INF; // Extremely far away, 1e15^2 = 1e30 < 3.4e38 (scalar_t max)
+                    buckets[bucket_idx].y[i] = Limits::INF;
+                    buckets[bucket_idx].z[i] = Limits::INF;
                     buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
                 }
                 
                 return;
             }
 
-            float min_b[3] = { temp_pts[start].coords[0], temp_pts[start].coords[1], temp_pts[start].coords[2] };
-            float max_b[3] = { min_b[0], min_b[1], min_b[2] };
+            scalar_t min_b[3] = { temp_pts[start].coords[0], temp_pts[start].coords[1], temp_pts[start].coords[2] };
+            scalar_t max_b[3] = { min_b[0], min_b[1], min_b[2] };
             
             for (size_t i = start + 1; i < end; ++i) {
                 for (int d = 0; d < 3; ++d) {
@@ -113,7 +125,7 @@ private:
             }
 
             uint8_t best_dim = 0;
-            float max_ex = max_b[0] - min_b[0];
+            scalar_t max_ex = max_b[0] - min_b[0];
             for (uint8_t d = 1; d < 3; ++d) {
                 if (max_b[d] - min_b[d] > max_ex) {
                     max_ex = max_b[d] - min_b[d];
@@ -122,14 +134,14 @@ private:
             }
 
             size_t left_buckets = calc_left_buckets(current_buckets);
-            size_t left_points = left_buckets * LeafSize;
+            size_t left_points = left_buckets * cfg.LeafSize;
             size_t mid = start + left_points;
 
             if constexpr(!preordered)nth_element(
                 temp_pts.begin() + start, 
                 temp_pts.begin() + mid, 
                 temp_pts.begin() + end,
-                [best_dim](const Point& a, const Point& b) {
+                [best_dim](const FatPoint& a, const FatPoint& b) {
                     return a.coords[best_dim] < b.coords[best_dim];
                 }
             );
@@ -137,7 +149,7 @@ private:
             vals[node_idx] = temp_pts[mid].coords[best_dim];
             set_dim(node_idx, best_dim);
 
-            if (size > THRES_PARALLELISM) {
+            if (size > cfg.THRES_PARALLELISM) {
                 #pragma omp task shared(temp_pts, vals, dims, buckets)
                 build(start, mid, 2 * node_idx + 1, left_buckets);
                 
@@ -159,17 +171,17 @@ public:
      * Note: The input span will be mutated (partially sorted) during construction.
      * 
      * @param temp_pts Mutable span of points to build the tree from.
-     * @return std::expected<KdTree, KdTreeError> The built tree, or KdTreeError::EmptyInput if the input was empty.
+     * @return std::expected<KdTree, error_t> The built tree, or error_t::EmptyInput if the input was empty.
      */
-    static std::expected<KdTree, KdTreeError> build(std::span<Point> temp_pts) {
-        if (temp_pts.empty()) return std::unexpected(KdTreeError::EmptyInput);
+    static std::expected<KdTree, error_t> build(std::span<FatPoint> temp_pts) {
+        if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
-        size_t B = (n + LeafSize - 1) / LeafSize; 
+        size_t B = (n + cfg.LeafSize - 1) / cfg.LeafSize; 
 
-        std::vector<float> vals(B > 0 ? B - 1 : 0);
+        std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
-        std::vector<LeafBucket<LeafSize>> buckets(B);
+        std::vector<LeafBucket> buckets(B);
 
         Builder<false> builder{temp_pts, vals, dims, buckets, B};
 
@@ -190,17 +202,17 @@ public:
      * Note: The input span will be mutated (partially sorted) during construction.
      * 
      * @param temp_pts Mutable span of points to build the tree from.
-     * @return std::expected<KdTree, KdTreeError> The built tree, or KdTreeError::EmptyInput if the input was empty.
+     * @return std::expected<KdTree, error_t> The built tree, or error_t::EmptyInput if the input was empty.
      */
-    static std::expected<KdTree, KdTreeError> build_from_ordered(std::span<const Point> temp_pts) {
-        if (temp_pts.empty()) return std::unexpected(KdTreeError::EmptyInput);
+    static std::expected<KdTree, error_t> build_from_ordered(std::span<const FatPoint> temp_pts) {
+        if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
-        size_t B = (n + LeafSize - 1) / LeafSize; 
+        size_t B = (n + cfg.LeafSize - 1) / cfg.LeafSize; 
 
-        std::vector<float> vals(B > 0 ? B - 1 : 0);
+        std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
-        std::vector<LeafBucket<LeafSize>> buckets(B);
+        std::vector<LeafBucket> buckets(B);
 
         Builder<true> builder{temp_pts, vals, dims, buckets, B};
 
@@ -220,52 +232,52 @@ public:
      * 
      * @return KdTreeView<LeafSize> The view of this tree after building.
      */
-    KdTreeView<LeafSize> view() const noexcept {
-        return KdTreeView<LeafSize>(split_vals, split_dims, buckets, min_root, max_root);
+    KdTreeView<Limits,cfg> view() const noexcept {
+        return KdTreeView<Limits,cfg>(split_vals, split_dims, buckets, min_root, max_root);
     }
 
     /**
      * @brief Implicit conversion to view.
      */
-    operator KdTreeView<LeafSize>() const noexcept {
+    operator KdTreeView<Limits,cfg>() const noexcept {
         return view();
     }
 
     /**
      * @brief Forwarding method to find the closest intersection between a ray and points in the Kd-Tree.
      * 
-     * @param ro 3-float array representing the ray origin.
-     * @param rd 3-float array representing the ray direction.
+     * @param ro 3-scalar_t array representing the ray origin.
+     * @param rd 3-scalar_t array representing the ray direction.
      * @param max_t The maximum traversal distance along the ray.
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
      */
-    std::optional<RayHit> query_ray(const array3 ro, const array3 rl, float max_t=INF, float radius=0.0f) const noexcept {
+    std::optional<RayHit> query_ray(const point_t ro, const point_t rl, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
         return view().query_ray(ro,rl,max_t,radius);
     }
 
     /**
      * @brief Forwarding method to find the single nearest neighbor (1-NN) for a given target.
      * 
-     * @param target 3-float array representing the query coordinates.
+     * @param target 3-scalar_t array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const array3 target) const noexcept {
+    std::optional<KnnResult> query_1nn(const point_t target) const noexcept {
         return view().query_1nn(target);
     }
 
     /**
      * @brief Forwarding method to find the k-nearest neighbors (k-NN) for a given target.
      * 
-     * @param target 3-float array representing the query coordinates.
+     * @param target 3-scalar_t array representing the query coordinates.
      * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
      * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
      */
-    std::span<KnnResult> query_knn(const array3 target, std::span<KnnResult> buffer) const noexcept {
+    std::span<KnnResult> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
         return view().query_knn(target, buffer);
     }
 
-    void set_bbox(array3 min, array3 max){
+    void set_bbox(point_t min, point_t max){
         min_root=min;
         max_root=max;
     }

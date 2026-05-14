@@ -4,13 +4,13 @@ It is not the most complete nor the most flexible, but it is what it needsto be,
 
 ## Features
 
-- **Header-Only:** drop `include/kd3/*` into your project and you are good to go.  
-- **Extremely fast!** like for real. k-NN queries are more than [2x](./docs/benchmarking.md) compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
+- **Header-Only:** drop `include/kd3/*` into your project and you are good to go. You are not tied to `xmake` as you build system.  
+- **Extremely fast!** like for real. k-NN queries are more than [2x](./docs/benchmarking.md) fast compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
 - **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading (CUDA, SYCL, OpenMP Target) and memory mapped files.
 - **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
 - **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. They are distributed in a standalone header so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
 - **C-API Available:** a C interface wrapper is provided for FFI integration.
-- **Shader implementation:** a GLSL implementation of the query functions, allowing rendering on the GPU without OpenMP device offloading, and sharing trees computed on the CPU side.
+- **Shader implementation:** a GLSL implementation of the query functions, allowing rendering on the GPU without OpenMP device offloading, and sharing trees computed on the CPU side. Experimental, this feature WILL[^3] change.
 
 ## Quick Start (C++)
 
@@ -190,3 +190,4 @@ If you plan on using it via xmake, you can use [package.lua](./package.lua) as r
 
 [^1]: Yes you are allowed to throw up.
 [^2]: Unlike most of my other projects, GPU support here is via a custom GLSL implementation of the query functions and not OpenMP offloading, but it would be nice to test that as well 😊.
+[^3]: The plan is to avoid shipping glsl files to be imported, but to add a script (also invokable via CLI) to generate them, so to allow more freedom in integration.

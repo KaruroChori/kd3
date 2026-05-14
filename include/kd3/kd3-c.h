@@ -12,6 +12,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef KD3_NS
+#   define KD3_NS kd3
+#endif
+
+#define KD3$_1(ns, x) ns ## _ ## x
+#define KD3$_2(ns, x) KD3$_1(ns,x)
+
+#define KD3$(x) KD3$_2(KD3_NS,x)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,7 +32,7 @@ extern "C" {
 typedef struct {
     float coords[3];
     uint32_t payload_id;
-} kd3_point_t;
+} KD3$(point_t);
 
 /**
  * @brief Matching kd3::KnnResult
@@ -32,7 +41,7 @@ typedef struct {
 typedef struct {
     float dist_sq;
     uint32_t payload_id;
-} kd3_knn_result_t;
+} KD3$(knn_result_t);
 
 /**
  * @brief Matching kd3::RayHit
@@ -41,12 +50,12 @@ typedef struct {
 typedef struct{ 
     float t;
     uint32_t payload_id;
-} kd3_ray_hit_t;
+} KD3$(ray_hit_t);
 
 /**
  * @brief Opaque handle to a built kd-tree
  */
-typedef struct kd3_tree_t kd3_tree_t;
+typedef struct KD3$(tree_t) KD3$(tree_t);
 
 /**
  * @brief Build a kd-tree from a given array of points.
@@ -57,16 +66,16 @@ typedef struct kd3_tree_t kd3_tree_t;
  * 
  * @return kd3_tree_t* A non-NULL handle on success, NULL on failure.
  */
-kd3_tree_t *kd3_tree_create(const kd3_point_t *points,
-                            size_t npoints,
-                            int *error);
+KD3$(tree_t) *KD3$(tree_create)(const KD3$(point_t) *points,
+                                size_t npoints,
+                                int *error);
 
 /**
  * @brief Destroy a tree created with `kd3_tree_create`.
  * 
  * @param tree Pointer to the tree handle to destroy.
  */
-void kd3_tree_destroy(kd3_tree_t *tree);
+void KD3$(tree_destroy)(KD3$(tree_t) *tree);
 
 /**
  * @brief Find the single nearest neighbor (1-NN) for a given target.
@@ -77,9 +86,9 @@ void kd3_tree_destroy(kd3_tree_t *tree);
  * 
  * @return int 0 on success, 1 if the tree is empty or invalid.
  */
-int kd3_tree_query_1nn(const kd3_tree_t *tree,
-                       const float target[3],
-                       kd3_knn_result_t *out);
+int KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
+                         const float target[3],
+                         KD3$(knn_result_t) *out);
 
 /**
  * @brief Find the k-nearest neighbors (k-NN) for a given target.
@@ -91,10 +100,10 @@ int kd3_tree_query_1nn(const kd3_tree_t *tree,
  * 
  * @return size_t The number of valid results found (may be < k if the tree holds fewer points than k).
  */
-size_t kd3_tree_query_knn(const kd3_tree_t *tree,
-                          const float target[3],
-                          kd3_knn_result_t *results,
-                          size_t k);
+size_t KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
+                            const float target[3],
+                            KD3$(knn_result_t) *results,
+                            size_t k);
 
 #ifdef __cplusplus
 }

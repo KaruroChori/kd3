@@ -24,7 +24,7 @@ constexpr size_t MAX_STACK_DEPTH = 48*2;
 
 using std::sort;
 using std::nth_element;
-using array3 = std::array<float,3>;
+using point_t = std::array<float,3>;
 
 #ifndef KD3_SIMD_PARALLELISM
     #if (__cpp_lib_simd || __cpp_lib_experimental_simd) && __has_include(<simd>)
@@ -52,13 +52,13 @@ constexpr size_t THRES_PARALLELISM = 10'000;
 /**
  * @brief Error codes for KdTree operations.
  */
-enum class KdTreeError { EmptyInput };
+enum class error_t { EmptyInput };
 
 /**
  * @brief 3D point structure used for building the tree.
  */
 struct Point {
-    array3 coords;
+    point_t coords;
     uint32_t payload_id;
 };
 
@@ -101,8 +101,8 @@ public:
     std::span<const float> split_vals;
     std::span<const uint64_t> split_dims;
     std::span<const LeafBucket<LeafSize>> buckets;
-    array3 min_root;
-    array3 max_root;
+    point_t min_root;
+    point_t max_root;
 
     /**
      * @brief Default constructor creating an empty view.
@@ -119,8 +119,8 @@ public:
     KdTreeView(std::span<const float> vals, 
                std::span<const uint64_t> dims, 
                std::span<const LeafBucket<LeafSize>> bks,
-               array3 min_root,
-               array3 max_root
+               point_t min_root,
+               point_t max_root
                 )
         : split_vals(vals), split_dims(dims), buckets(bks), min_root(min_root), max_root(max_root) {}
 
@@ -145,7 +145,7 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
      */
-    std::optional<float> query_ray(const array3 ro, const array3 rd, float max_t = INF, float radius = 0.0f) const noexcept {
+    std::optional<float> query_ray(const point_t ro, const point_t rd, float max_t = INF, float radius = 0.0f) const noexcept {
         if (buckets.empty()) return std::nullopt;
 
 
@@ -159,13 +159,13 @@ public:
         uint32_t best_id = static_cast<uint32_t>(-1);
         bool hit = false;
         
-        array3 inv_rd;
+        point_t inv_rd;
         for (int i = 0; i < 3; ++i) {
             inv_rd[i] = (rd[i] == 0.0f) ? 0.0f : (1.0f / rd[i]); 
         }
 
-        array3 t1_aabb = {(min_root[0] - ro[0]) * inv_rd[0],(min_root[1] - ro[1]) * inv_rd[1],(min_root[2] - ro[2]) * inv_rd[2]};
-        array3 t2_aabb = {(max_root[0] - ro[0]) * inv_rd[0],(max_root[1] - ro[1]) * inv_rd[1],(max_root[2] - ro[2]) * inv_rd[2]};
+        point_t t1_aabb = {(min_root[0] - ro[0]) * inv_rd[0],(min_root[1] - ro[1]) * inv_rd[1],(min_root[2] - ro[2]) * inv_rd[2]};
+        point_t t2_aabb = {(max_root[0] - ro[0]) * inv_rd[0],(max_root[1] - ro[1]) * inv_rd[1],(max_root[2] - ro[2]) * inv_rd[2]};
 
         float tN = std::max(std::max(std::min(t1_aabb[0], t2_aabb[0]), std::min(t1_aabb[1], t2_aabb[1])), std::max(std::min(t1_aabb[2], t2_aabb[2]), float{}));
         float tF = std::min(std::min(std::max(t1_aabb[0], t2_aabb[0]), std::max(t1_aabb[1], t2_aabb[1])), std::min(std::max(t1_aabb[2], t2_aabb[2]), max_t));
@@ -280,7 +280,7 @@ public:
      * @param target 3-float array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<float> query_distance(const array3 target) const noexcept {
+    std::optional<float> query_distance(const point_t target) const noexcept {
         if (buckets.empty()) return std::nullopt;
 
         float min_dist_sq = std::numeric_limits<float>::max();
