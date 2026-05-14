@@ -9,7 +9,7 @@
 #include <span>
 #include <array>
 
-using TreeType = kd3::KdTree<kd3::limits<float>>;
+using TreeType = kd3::KdTree<kd3::limits<float>, {.leaf_size=32}>;
 
 
 struct Kd3PointAdaptor {
@@ -63,7 +63,7 @@ std::vector<TreeType::KnnResult> linear_scan(const TreeType::scalar_t target[3],
 int main() {
     using namespace kd3;
     constexpr size_t PARALLELISM = 32;
-    std::cout << "--- KD-Tree Benchmark --- [simd: "<<TreeType::cfg.SIMD_PARALLELISM<<", parallelism: "<<PARALLELISM<<"]\n";
+    std::cout << "--- KD-Tree Benchmark --- [simd: "<<TreeType::cfg.simd_parallelism<<", parallelism: "<<PARALLELISM<<"]\n";
 
     constexpr size_t N_POINTS = 5'000'000;
     constexpr size_t N_QUERIES = 100'000;
@@ -129,7 +129,7 @@ int main() {
     size_t dummy_kd3 = 0;
     for (const auto& q : queries) {
         std::array<TreeType::KnnResult, K> storage{};
-        auto res = tree.query_knn(q, storage);
+        auto res = *tree.query_knn(q, storage);
         dummy_kd3 += res.front().payload_id;
     }
     auto t4 = std::chrono::high_resolution_clock::now();
@@ -174,7 +174,7 @@ int main() {
 
         // 1. Run kd3
         std::array<TreeType::KnnResult, K> storage{};
-        auto kd_res = tree.query_knn(q, storage);
+        auto kd_res = *tree.query_knn(q, storage);
 
         // 2. Run Nanoflann
         nf_tree.knnSearch(q.data(), K, nf_indices.data(), nf_dists.data());

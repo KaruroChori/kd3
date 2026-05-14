@@ -25,12 +25,27 @@
 extern "C" {
 #endif
 
+typedef float KD3$(scalar_t);
+typedef float KD3$(distance_t);
+
+/**
+ * @brief Error states which can be returned by the library.
+ * 
+ */
+typedef enum  {
+    KD3$(Ok),
+    KD3$(EmptyInput),
+    KD3$(EmptyContainer),
+    KD3$(NotSupported),
+    KD3$(NotImplemented)
+} KD3$(error_t);
+
 /**
  * @brief Matching kd3::Point
  * 
  */
 typedef struct {
-    float coords[3];
+    KD3$(scalar_t) coords[3];
     uint32_t payload_id;
 } KD3$(point_t);
 
@@ -39,7 +54,7 @@ typedef struct {
  * 
  */
 typedef struct {
-    float dist_sq;
+    KD3$(distance_t) dist_sq;
     uint32_t payload_id;
 } KD3$(knn_result_t);
 
@@ -48,7 +63,7 @@ typedef struct {
  * 
  */
 typedef struct{ 
-    float t;
+    KD3$(distance_t) t;
     uint32_t payload_id;
 } KD3$(ray_hit_t);
 
@@ -68,7 +83,7 @@ typedef struct KD3$(tree_t) KD3$(tree_t);
  */
 KD3$(tree_t) *KD3$(tree_create)(const KD3$(point_t) *points,
                                 size_t npoints,
-                                int *error);
+                                KD3$(error_t) *error);
 
 /**
  * @brief Destroy a tree created with `kd3_tree_create`.
@@ -84,11 +99,25 @@ void KD3$(tree_destroy)(KD3$(tree_t) *tree);
  * @param target 3-float array with query coordinates.
  * @param out    Pointer to a result struct that will be filled with the best match.
  * 
- * @return int 0 on success, 1 if the tree is empty or invalid.
+ * @return kd3_error_t
  */
-int KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
-                         const float target[3],
-                         KD3$(knn_result_t) *out);
+KD3$(error_t) KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
+                                   const KD3$(scalar_t) target[3],
+                                   KD3$(knn_result_t) *out);
+
+/**
+ * @brief Find the distance squared to the nearest neighbor (1-NN) of a given target.
+ *
+ * @param tree   The tree handle.
+ * @param target 3-float array with query coordinates.
+ * @param out    Pointer to a variable where to store the result.
+ * 
+ * @return kd3_error_t
+ */
+KD3$(error_t) KD3$(tree_query_distance2)(const KD3$(tree_t) *tree,
+                                         const KD3$(scalar_t) target[3],
+                                         float *out);
+
 
 /**
  * @brief Find the k-nearest neighbors (k-NN) for a given target.
@@ -96,14 +125,16 @@ int KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
  * @param tree    The tree handle.
  * @param target  3-float array with query coordinates.
  * @param results Caller-allocated linear array of at least `k` elements to store results.
- * @param k       Number of neighbours to return (k > 0).
+ * @param k       Number of neighbours to return (k > 0), later overridden with their actual number.
  * 
- * @return size_t The number of valid results found (may be < k if the tree holds fewer points than k).
+ * @return kd3_error_t
  */
-size_t KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
-                            const float target[3],
-                            KD3$(knn_result_t) *results,
-                            size_t k);
+KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
+                                   const KD3$(scalar_t) target[3],
+                                   KD3$(knn_result_t) *results,
+                                   size_t *k);
+
+//TODO: Missing the raytrace prototypes
 
 #ifdef __cplusplus
 }

@@ -20,7 +20,7 @@ It is not the most complete nor the most flexible, but it is what it needsto be,
 #include <vector>
 #include <array>
 
-using TreeType = kd3::KdTree<kd3::limits<float>, {.LeafSize=32}>;
+using TreeType = kd3::KdTree<kd3::limits<float>, {.LEAF_SIZE=32}>;
 
 int main() {
     // 1. Prepare your data

@@ -16,7 +16,7 @@
 // Override these by defining them before including this code
 // ---------------------------------------------------------
 
-// MUST match SIMD_PARALLELISM / LeafSize used in C++
+// MUST match SIMD_PARALLELISM / LEAF_SIZE used in C++
 #ifndef KD3_LEAF_SIZE
 #define KD3_LEAF_SIZE 16 
 #endif
@@ -34,7 +34,7 @@
 #define KD3_INF2 1e29
 
 // --- Memory Layout Constants ---
-// Replicates `alignas(std::min<size_t>(64, LeafSize*8))` in 32-bit words
+// Replicates `alignas(std::min<size_t>(64, LEAF_SIZE*8))` in 32-bit words
 #define KD3_ALIGN_WORDS (min(16u, uint(KD3_LEAF_SIZE) * 2u))
 
 // Distance in words between x, y, and z arrays (rounded up to nearest alignment)

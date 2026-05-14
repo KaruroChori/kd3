@@ -31,7 +31,7 @@ target("benchmarks")
 
 target("benchmarks.fast")
     set_kind("binary")
-    add_files("examples/benchmarks-fast.cpp")
+    add_files("examples/benchmarks.fast.cpp")
     add_includedirs("include", {public=true})    
     add_packages("openmp")
     if is_mode("release") then

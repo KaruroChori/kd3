@@ -30,7 +30,7 @@ namespace kd3 {
  * 
  * Can be implicitly converted to a KdTreeView to perform queries.
  * 
- * @tparam LeafSize The number of elements packed into each SIMD-friendly leaf.
+ * @tparam LEAF_SIZE The number of elements packed into each SIMD-friendly leaf.
  */
 template <typename Limits=limits<default_scalar_t>, cfg_t _cfg = {}>
 class KdTree {
@@ -100,15 +100,15 @@ private:
                     buckets[bucket_idx].x[i] = temp_pts[start + i].coords[0];
                     buckets[bucket_idx].y[i] = temp_pts[start + i].coords[1];
                     buckets[bucket_idx].z[i] = temp_pts[start + i].coords[2];
-                    buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
+                    if constexpr (cfg.had_index) buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
                 }
                 
                 // Fill the remainder with pseudo-infinity points
-                for (size_t i = size; i < cfg.LeafSize; ++i) {
+                for (size_t i = size; i < cfg.leaf_size; ++i) {
                     buckets[bucket_idx].x[i] = Limits::INF; // Extremely far away, 1e15^2 = 1e30 < 3.4e38 (scalar_t max)
                     buckets[bucket_idx].y[i] = Limits::INF;
                     buckets[bucket_idx].z[i] = Limits::INF;
-                    buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
+                    if constexpr (cfg.had_index) buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
                 }
                 
                 return;
@@ -134,7 +134,7 @@ private:
             }
 
             size_t left_buckets = calc_left_buckets(current_buckets);
-            size_t left_points = left_buckets * cfg.LeafSize;
+            size_t left_points = left_buckets * cfg.leaf_size;
             size_t mid = start + left_points;
 
             if constexpr(!preordered)nth_element(
@@ -152,7 +152,7 @@ private:
             vals[node_idx] = temp_pts[mid].coords[best_dim];
             set_dim(node_idx, best_dim);
 
-            if (size > cfg.THRES_PARALLELISM) {
+            if (size > cfg.thres_thread) {
                 #pragma omp task shared(temp_pts, vals, dims, buckets)
                 build(start, mid, 2 * node_idx + 1, left_buckets);
                 
@@ -180,7 +180,7 @@ public:
         if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
-        size_t B = (n + cfg.LeafSize - 1) / cfg.LeafSize; 
+        size_t B = (n + cfg.leaf_size - 1) / cfg.leaf_size; 
 
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
@@ -211,7 +211,7 @@ public:
         if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
 
         size_t n = temp_pts.size();
-        size_t B = (n + cfg.LeafSize - 1) / cfg.LeafSize; 
+        size_t B = (n + cfg.leaf_size - 1) / cfg.leaf_size; 
 
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + 31) / 32, 0);
@@ -233,7 +233,7 @@ public:
     /**
      * @brief Extracts the non-owning view capable of device offload.
      * 
-     * @return KdTreeView<LeafSize> The view of this tree after building.
+     * @return KdTreeView<LEAF_SIZE> The view of this tree after building.
      */
     KdTreeView<Limits,cfg> view() const noexcept {
         return KdTreeView<Limits,cfg>(split_vals, split_dims, buckets, min_root, max_root);
@@ -253,9 +253,9 @@ public:
      * @param rd 3-scalar_t array representing the ray direction.
      * @param max_t The maximum traversal distance along the ray.
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
-     * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
+     * @return The closest point hit, or error codes.
      */
-    std::optional<RayHit> query_ray(const point_t ro, const point_t rl, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
+    std::expected<RayHit, error_t> query_ray(const point_t ro, const point_t rl, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
         return view().query_ray(ro,rl,max_t,radius);
     }
 
@@ -263,10 +263,20 @@ public:
      * @brief Forwarding method to find the single nearest neighbor (1-NN) for a given target.
      * 
      * @param target 3-scalar_t array representing the query coordinates.
-     * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
+     * @return The closest point found, or error codes.
      */
-    std::optional<KnnResult> query_1nn(const point_t target) const noexcept {
+    std::expected<KnnResult, error_t>  query_1nn(const point_t target) const noexcept {
         return view().query_1nn(target);
+    }
+
+    /**
+     * @brief Forwarding method to find the distance (squared) from the nearest neighbor (1-NN) of a given target.
+     * 
+     * @param target 3-scalar_t array representing the query coordinates.
+     * @return The closest point found, or error codes.
+     */
+    std::expected<distance_t, error_t>  query_distance2(const point_t target) const noexcept {
+        return view().query_distance2(target);
     }
 
     /**
@@ -274,9 +284,9 @@ public:
      * 
      * @param target 3-scalar_t array representing the query coordinates.
      * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
-     * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
+     * @return A subspan of the buffer containing the found results, sorted from nearest to furthest. Or error codes.
      */
-    std::span<KnnResult> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
+    std::expected<std::span<KnnResult>, error_t> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
         return view().query_knn(target, buffer);
     }
 

@@ -20,7 +20,7 @@
 
 #include <kd3/kd3.hpp>
 
-using TreeType = kd3::KdTree<kd3::limits<float>,{.LeafSize=32}>;
+using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32}>;
 
 // ---------------------------------------------------------
 // Core Math & Geometry
@@ -227,7 +227,7 @@ int main() {
         build_points[i].payload_id = i;
     }
 
-    // 2. Build KdTree natively utilizing LeafSize = 8 for 1:1 GLSL SSBO matching
+    // 2. Build KdTree natively utilizing LEAF_SIZE = 8 for 1:1 GLSL SSBO matching
     auto t1 = std::chrono::high_resolution_clock::now();
     auto tree_expected = TreeType::build(build_points);
     if (!tree_expected) {

@@ -20,7 +20,7 @@
 
 #include <kd3/kd3.hpp>
 
-using TreeType = kd3::KdTree<kd3::limits<float>,{.LeafSize=32}>;
+using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32}>;
 
 // ---------------------------------------------------------
 // Core Math & Geometry

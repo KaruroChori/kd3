@@ -30,7 +30,7 @@ struct BenchmarkResult {
 template <size_t L>
 void run_benchmark_for_leaf(size_t N, int trials, std::vector<BenchmarkResult>& results) {
     using namespace kd3;
-    using TreeType = kd3::KdTree<kd3::limits<float>, {.LeafSize=L}>;
+    using TreeType = kd3::KdTree<kd3::limits<float>, {.leaf_size=L}>;
     
     std::random_device rd;
     std::mt19937 gen(42);
@@ -105,7 +105,7 @@ void run_benchmark_for_leaf(size_t N, int trials, std::vector<BenchmarkResult>& 
     r.p99_ns = query_times_ns[total_q * 0.99];
     results.push_back(r);
 
-    std::cout << "  LeafSize: " << std::setw(2) << L 
+    std::cout << "  LEAF_SIZE: " << std::setw(2) << L 
               << " | Build: " << std::setw(6) << std::fixed << std::setprecision(1) << median_build << " ms"
               << " | Query P50: " << std::setw(5) << r.p50_ns << " ns (P99: " << std::setw(5) << r.p99_ns << ")\n";
 }
@@ -116,7 +116,7 @@ int main() {
     std::vector<size_t> tree_sizes = {100'000, 500'000, 1'000'000, 5'000'000, 10'000'000, 50'000'000, 100'000'000};
     std::vector<BenchmarkResult> results;
 
-    std::cout << "Starting kd3 LeafSize Characterization Sweep (" << TRIALS << " trials per config)...\n";
+    std::cout << "Starting kd3 LEAF_SIZE Characterization Sweep (" << TRIALS << " trials per config)...\n";
 
     for (size_t N : tree_sizes) {
         std::cout << "\n--- Tree Size: " << N << " points ---\n";
@@ -133,7 +133,7 @@ int main() {
     }
 
     std::ofstream html("kd3_leaf_report.html");
-    html << R"(<!DOCTYPE html><html><head><title>kd3 LeafSize Report</title>
+    html << R"(<!DOCTYPE html><html><head><title>kd3 LEAF_SIZE Report</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>body{font-family: sans-serif; background:#111; color:#eee; margin:0; padding:20px;} 
     .container{display:flex; flex-direction:column; gap:20px; align-items:center;}</style></head><body>

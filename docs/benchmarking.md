@@ -8,20 +8,20 @@ xmake run nanoflann
 Example output on my 5950x:
 
 ```
---- KD-Tree Benchmark --- [8]
+--- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
 Generating 5000000 random points...
 
 [ BUILD PHASE ]
-kd3 Build Time:       147.558 ms
-nanoflann Build Time: 888.043 ms
+kd3 Build Time:       152.139 ms
+nanoflann Build Time: 892.225 ms
 
 [ QUERY PHASE ] - 100000 queries
-kd3 Query Time:       1064.87 ms (93908.2 QPS)
-nanoflann Query Time: 2312.27 ms (43247.5 QPS)
+kd3 Query Time:       1059.85 ms (94352.9 QPS)
+nanoflann Query Time: 2318.7 ms (43127.6 QPS)
 
 [ VALIDATION PHASE ]
 Validating correctness against linear scan...
-Linear Scan Time (Subset):       412.232 ms
+Linear Scan Time (Subset):       416.774 ms
 kd3 matches brute force:         YES
 nanoflann matches brute force:   YES
 ```

@@ -89,26 +89,27 @@ struct cfg_t{
 #ifndef KD3_SIMD_PARALLELISM
     #if (__cpp_lib_simd || __cpp_lib_experimental_simd) && __has_include(<simd>)
         #include <simd>
-        constexpr static  size_t SIMD_PARALLELISM = std::native_simd<default_scalar_t>::size();
+        constexpr static  size_t simd_parallelism = std::native_simd<default_scalar_t>::size();
     #elif (__cpp_lib_simd || __cpp_lib_experimental_simd) && __has_include(<experimental/simd>)
         #include <experimental/simd>
-        constexpr static  size_t SIMD_PARALLELISM = std::experimental::native_simd<default_scalar_t>::size();
+        constexpr static  size_t simd_parallelism = std::experimental::native_simd<default_scalar_t>::size();
     #elif defined(__AVX512F__)
-        constexpr static  size_t SIMD_PARALLELISM = 16;
+        constexpr static  size_t simd_parallelism = 16;
     #elif defined(__AVX2__) || defined(__AVX__)
-        constexpr static size_t SIMD_PARALLELISM = 8;
+        constexpr static size_t simd_parallelism = 8;
     #elif defined(__SSE4_2__) || defined(__SSE2__)
-        constexpr static  size_t SIMD_PARALLELISM = 4;
+        constexpr static  size_t simd_parallelism = 4;
     #else
-        constexpr static  size_t SIMD_PARALLELISM = 1;
+        constexpr static  size_t simd_parallelism = 1;
     #endif
 #else
-    constexpr static  size_t SIMD_PARALLELISM = KD3_SIMD_PARALLELISM;
+    constexpr static  size_t simd_parallelism = KD3_SIMD_PARALLELISM;
     #undef KD3_SIMD_PARALLELISM
 #endif
-    size_t MAX_STACK_DEPTH = 48*2;
-    size_t THRES_PARALLELISM = 10'000;
-    size_t LeafSize = SIMD_PARALLELISM*4;
+    size_t max_stack_depth = 48*2;
+    size_t thres_thread = 10'000;
+    size_t leaf_size = simd_parallelism*4;
+    bool   had_index = true;
 };
 
 
@@ -122,7 +123,7 @@ struct cfg_t{
  * This class consists only of spans, making it trivially copyable and safe to 
  * map to device memory (e.g., via OpenMP target offload) for parallel queries.
  * 
- * @tparam LeafSize The number of elements packed into each SIMD-friendly leaf.
+ * @tparam LEAF_SIZE The number of elements packed into each SIMD-friendly leaf.
  */
 template <typename Limits=limits<default_scalar_t>, cfg_t _cfg = {}>
 class KdTreeView {
@@ -139,19 +140,19 @@ public:
     /**
     * @brief A bucket representing a leaf node in the kd-tree containing multiple points.
     * 
-    * @tparam LeafSize The maximum number of points this leaf can hold.
+    * @tparam LEAF_SIZE The maximum number of points this leaf can hold.
     */
     struct LeafBucket {
-        alignas(std::min<size_t>(64, cfg.SIMD_PARALLELISM*8)) scalar_t x[cfg.LeafSize];
-        alignas(std::min<size_t>(64, cfg.SIMD_PARALLELISM*8)) scalar_t y[cfg.LeafSize];
-        alignas(std::min<size_t>(64, cfg.SIMD_PARALLELISM*8)) scalar_t z[cfg.LeafSize];
-        uint32_t ids[cfg.LeafSize];
+        alignas(std::min<size_t>(64, cfg.simd_parallelism*8)) scalar_t x[cfg.leaf_size];
+        alignas(std::min<size_t>(64, cfg.simd_parallelism*8)) scalar_t y[cfg.leaf_size];
+        alignas(std::min<size_t>(64, cfg.simd_parallelism*8)) scalar_t z[cfg.leaf_size];
+        uint32_t ids[cfg.had_index?cfg.leaf_size:0];
     };
 
     /**
     * @brief Error codes for KdTree operations.
     */
-    enum struct error_t { EmptyInput };
+    enum struct error_t { Ok, EmptyInput, EmptyContainer, NotSupported, NotImplemented };
 
     std::span<const scalar_t> split_vals;
     std::span<const uint64_t> split_dims;
@@ -199,15 +200,14 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return std::optional<RayHit> The closest point hit, or std::nullopt if none.
      */
-    std::optional<RayHit> query_ray(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = 0.0f) const noexcept {
+    std::expected<RayHit, error_t> query_ray(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = 0.0f) const noexcept {
         //Not working for type which are not float-like (cannot represent the inverse and hard to use INF without a mantissa)
-        if constexpr(!std::is_floating_point_v<distance_t>)return std::nullopt;
+        if constexpr(!std::is_floating_point_v<distance_t>)return std::unexpected{error_t::NotSupported};
 
-        if (buckets.empty()) return std::nullopt;
-
+        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         struct RayNode { size_t idx; scalar_t t_min; scalar_t t_max; };
-        RayNode stack[cfg.MAX_STACK_DEPTH];
+        RayNode stack[cfg.max_stack_depth];
         size_t stack_sz = 0;
         
 
@@ -228,7 +228,7 @@ public:
         scalar_t tF = std::min(std::min(std::max(t1_aabb[0], t2_aabb[0]), std::max(t1_aabb[1], t2_aabb[1])), std::min(std::max(t1_aabb[2], t2_aabb[2]), max_t));
 
         // 2. Instantly cull any ray that misses the scene entirely (e.g., Skybox rays)
-        if (tN > tF) return std::nullopt;
+        if (tN > tF) return std::unexpected{error_t::Ok};
         
         stack[stack_sz++] = {0, tN, tF};
 
@@ -249,7 +249,7 @@ public:
                 size_t bucket_idx = curr - LEAF_THRESHOLD;
                 const auto& b = buckets[bucket_idx];
                 
-                for (size_t i = 0; i < cfg.LeafSize; ++i) {
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     scalar_t dx = b.x[i] - ro[0];
                     scalar_t dy = b.y[i] - ro[1];
                     scalar_t dz = b.z[i] - ro[2];
@@ -328,7 +328,7 @@ public:
             return RayHit{best_t, best_id};
         }
         
-        return std::nullopt;
+        return std::unexpected{error_t::Ok};
     }
 
     /**
@@ -337,14 +337,16 @@ public:
      * @param target 3-scalar_t array representing the query coordinates.
      * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
      */
-    std::optional<KnnResult> query_1nn(const point_t target) const noexcept {
-        if (buckets.empty()) return std::nullopt;
+    std::expected<KnnResult, error_t> query_1nn(const point_t target) const noexcept {
+        if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
+
+        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
         uint32_t best_id = 0;
 
         struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
-        SearchNode stack[cfg.MAX_STACK_DEPTH]; 
+        SearchNode stack[cfg.max_stack_depth]; 
         size_t stack_sz = 0;
         
         stack[stack_sz++] = {0, scalar_t{}};
@@ -360,16 +362,16 @@ public:
                 size_t bucket_idx = curr - LEAF_THRESHOLD;
                 const auto& b = buckets[bucket_idx];
 
-                distance_t dists[cfg.LeafSize];
+                distance_t dists[cfg.leaf_size];
                 
-                for (size_t i = 0; i < cfg.LeafSize; ++i) {
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     distance_t dx = target[0] - b.x[i];
                     distance_t dy = target[1] - b.y[i];
                     distance_t dz = target[2] - b.z[i];
                     dists[i] = dx*dx + dy*dy + dz*dz;
                 }
 
-                for (size_t i = 0; i < cfg.LeafSize; ++i) {
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     if (dists[i] < min_dist_sq) {
                         min_dist_sq = dists[i];
                         best_id = b.ids[i];
@@ -398,7 +400,7 @@ public:
 
         // Filter out pseudo-infinity points in case tree only had dummy data (impossible from Builder) 
         // or user queried 1e15f explicitly.
-        if (min_dist_sq >= Limits::INF2) return std::nullopt;
+        if (min_dist_sq >= Limits::INF2) [[unlikely]] return std::unexpected{error_t::Ok};
 
         return KnnResult{min_dist_sq, best_id};
     }
@@ -411,9 +413,13 @@ public:
      *               The size of this span determines 'k'.
      * @return std::span<KnnResult> A subspan of the buffer containing the found results, sorted from nearest to furthest.
      */
-    std::span<KnnResult> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
+    std::expected<std::span<KnnResult>, error_t> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
+        if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
+
+        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
+
         const size_t k = buffer.size();
-        if (buckets.empty() || k == 0) return {};
+        if (buckets.empty() || k == 0) [[unlikely]] return {};
         
         size_t heap_size = 0;
 
@@ -430,7 +436,7 @@ public:
         };
 
         struct SearchNode { size_t idx; distance_t min_dist_sq; };
-        SearchNode stack[cfg.MAX_STACK_DEPTH]; 
+        SearchNode stack[cfg.max_stack_depth]; 
         size_t stack_sz = 0;
         stack[stack_sz++] = {0, distance_t{}};
 
@@ -445,16 +451,16 @@ public:
                 size_t bucket_idx = curr - LEAF_THRESHOLD;
                 const auto& b = buckets[bucket_idx];
 
-                distance_t dists[cfg.LeafSize];
+                distance_t dists[cfg.leaf_size];
                 
-                for (size_t i = 0; i < cfg.LeafSize; ++i) {
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     distance_t dx = target[0] - b.x[i];
                     distance_t dy = target[1] - b.y[i];
                     distance_t dz = target[2] - b.z[i];
                     dists[i] = dx*dx + dy*dy + dz*dz;
                 }
 
-                for (size_t i = 0; i < cfg.LeafSize; ++i) {
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     push_heap(dists[i], b.ids[i]);
                 }
                 continue;
@@ -492,6 +498,76 @@ public:
         }
         
         return buffer.subspan(0, valid_results);
+    }
+
+    /**
+     * @brief Find the single nearest neighbor (1-NN) for a given target.
+     * 
+     * @param target 3-float array representing the query coordinates.
+     * @return std::optional<KnnResult> The closest point found, or std::nullopt if the tree is empty.
+     */
+    std::expected<distance_t,error_t> query_distance2(const point_t target) const noexcept {
+        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
+
+        distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
+
+        struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
+        SearchNode stack[cfg.max_stack_depth]; 
+        size_t stack_sz = 0;
+        
+        stack[stack_sz++] = {0, scalar_t{}};
+
+        const size_t LEAF_THRESHOLD = buckets.size() - 1;
+
+        while (stack_sz > 0) {
+            auto [curr, node_min_dist_sq] = stack[--stack_sz];
+
+            if (node_min_dist_sq >= min_dist_sq) continue;
+
+            if (curr >= LEAF_THRESHOLD) {
+                size_t bucket_idx = curr - LEAF_THRESHOLD;
+                const auto& b = buckets[bucket_idx];
+
+                distance_t dists[cfg.leaf_size];
+                
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                    distance_t dx = target[0] - b.x[i];
+                    distance_t dy = target[1] - b.y[i];
+                    distance_t dz = target[2] - b.z[i];
+                    dists[i] = dx*dx + dy*dy + dz*dz;
+                }
+
+                for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                    if (dists[i] < min_dist_sq) {
+                        min_dist_sq = dists[i];
+                    }
+                }
+                continue;
+            }
+
+            uint8_t dim = get_dim(curr);
+            scalar_t split = split_vals[curr];
+
+            distance_t axis_dist = target[dim] - split;
+            distance_t axis_dist_sq = axis_dist * axis_dist;
+            
+            size_t left = 2 * curr + 1;
+            size_t right = 2 * curr + 2;
+
+            size_t first = (axis_dist < scalar_t{}) ? left : right;
+            size_t second = (axis_dist < scalar_t{}) ? right : left;
+
+            if (axis_dist_sq < min_dist_sq) {
+                stack[stack_sz++] = {second, axis_dist_sq};
+            }
+            stack[stack_sz++] = {first, distance_t{}};
+        }
+
+        // Filter out pseudo-infinity points in case tree only had dummy data (impossible from Builder) 
+        // or user queried 1e15f explicitly.
+        if (min_dist_sq >= Limits::INF2) [[unlikely]]  return std::unexpected{error_t::Ok};
+
+        return min_dist_sq;
     }
 };
 
