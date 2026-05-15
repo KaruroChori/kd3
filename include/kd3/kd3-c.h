@@ -15,6 +15,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #define KD3$_1(ns, x) ns ## _ ## x
 #define KD3$_2(ns, x) KD3$_1(ns,x)
@@ -23,6 +24,10 @@
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#ifndef KD3_DIMENSIONS
+#   define KD3_DIMENSIONS 3
 #endif
 
 #ifndef KD3_SIMD_PARALLELISM
@@ -54,7 +59,7 @@ extern "C" {
 #endif
 
 #ifndef KD3_THRES_THREAD
-#   define KD3_THRES_THREAD 10'000
+#   define KD3_THRES_THREAD 10000
 #endif
 
 #ifndef KD3_MAX_STACK_DEPTH
@@ -73,7 +78,8 @@ typedef enum  {
     KD3$(EmptyInput),
     KD3$(EmptyContainer),
     KD3$(NotSupported),
-    KD3$(NotImplemented)
+    KD3$(NotImplemented),
+    KD3$(NotFound)
 } KD3$(error_t);
 
 /**
@@ -81,7 +87,7 @@ typedef enum  {
  * 
  */
 typedef struct {
-    KD3$(scalar_t) coords[3];
+    KD3$(scalar_t) coords[KD3_DIMENSIONS];
     uint32_t payload_id;
 } KD3$(point_t);
 
@@ -99,7 +105,7 @@ typedef struct {
  * 
  */
 typedef struct{ 
-    KD3$(distance_t) t;
+    KD3$(scalar_t) t;
     uint32_t payload_id;
 } KD3$(ray_hit_t);
 
@@ -113,7 +119,7 @@ typedef struct KD3$(tree_t) KD3$(tree_t);
  *
  * @param points  Pointer to an array of `kd3_point_t`.
  * @param npoints Number of points in the array.
- * @param error   Optional output pointer, receives 0 on success or 1 (e.g., empty input).
+ * @param error   Optional output pointer, receives 0 on success or >0 on error.
  * 
  * @return kd3_tree_t* A non-NULL handle on success, NULL on failure.
  */
@@ -132,45 +138,81 @@ void KD3$(tree_destroy)(KD3$(tree_t) *tree);
  * @brief Find the single nearest neighbor (1-NN) for a given target.
  *
  * @param tree   The tree handle.
- * @param target 3-float array with query coordinates.
+ * @param target Array with query coordinates.
  * @param out    Pointer to a result struct that will be filled with the best match.
  * 
  * @return kd3_error_t
  */
 KD3$(error_t) KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
-                                   const KD3$(scalar_t) target[3],
+                                   const KD3$(scalar_t) target[KD3_DIMENSIONS],
                                    KD3$(knn_result_t) *out);
 
 /**
  * @brief Find the distance squared to the nearest neighbor (1-NN) of a given target.
  *
  * @param tree   The tree handle.
- * @param target 3-float array with query coordinates.
+ * @param target Array with query coordinates.
  * @param out    Pointer to a variable where to store the result.
  * 
  * @return kd3_error_t
  */
 KD3$(error_t) KD3$(tree_query_distance2)(const KD3$(tree_t) *tree,
-                                         const KD3$(scalar_t) target[3],
-                                         float *out);
-
+                                         const KD3$(scalar_t) target[KD3_DIMENSIONS],
+                                         KD3$(distance_t) *out);
 
 /**
  * @brief Find the k-nearest neighbors (k-NN) for a given target.
  *
  * @param tree    The tree handle.
- * @param target  3-float array with query coordinates.
+ * @param target  Array with query coordinates.
  * @param results Caller-allocated linear array of at least `k` elements to store results.
  * @param k       Number of neighbours to return (k > 0), later overridden with their actual number.
  * 
  * @return kd3_error_t
  */
 KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
-                                   const KD3$(scalar_t) target[3],
+                                   const KD3$(scalar_t) target[KD3_DIMENSIONS],
                                    KD3$(knn_result_t) *results,
                                    size_t *k);
 
-//TODO: Missing the raytrace prototypes
+/**
+ * @brief Find the closest intersection between a ray and points in the Kd-Tree.
+ *
+ * @param tree   The tree handle.
+ * @param ro     Ray origin coordinates.
+ * @param rd     Ray direction coordinates.
+ * @param max_t  The maximum traversal distance along the ray.
+ * @param radius Optional. Represents the mathematical thickness of the ray.
+ * @param out    Pointer to a result struct that will be filled with the best match.
+ * 
+ * @return kd3_error_t
+ */
+KD3$(error_t) KD3$(tree_query_ray)(const KD3$(tree_t) *tree,
+                                   const KD3$(scalar_t) ro[KD3_DIMENSIONS],
+                                   const KD3$(scalar_t) rd[KD3_DIMENSIONS],
+                                   KD3$(scalar_t) max_t,
+                                   KD3$(scalar_t) radius,
+                                   KD3$(ray_hit_t) *out);
+
+/**
+ * @brief Find the distance to the closest intersection between a ray and points in the Kd-Tree (ignores index).
+ *
+ * @param tree   The tree handle.
+ * @param ro     Ray origin coordinates.
+ * @param rd     Ray direction coordinates.
+ * @param max_t  The maximum traversal distance along the ray.
+ * @param radius Optional. Represents the mathematical thickness of the ray.
+ * @param out    Pointer to a variable where to store the resulting distance.
+ * 
+ * @return kd3_error_t
+ */
+KD3$(error_t) KD3$(tree_query_ray_distance)(const KD3$(tree_t) *tree,
+                                            const KD3$(scalar_t) ro[KD3_DIMENSIONS],
+                                            const KD3$(scalar_t) rd[KD3_DIMENSIONS],
+                                            KD3$(scalar_t) max_t,
+                                            KD3$(scalar_t) radius,
+                                            KD3$(distance_t) *out);
+
 
 #ifdef __cplusplus
 }
@@ -187,7 +229,7 @@ constexpr kd3::cfg_t cfg{
     .had_index = KD3_HAS_INDEX
 };
 
-using Tree = kd3::KdTree<kd3::limits<KD3_BASE_TYPE>,cfg>;
+using Tree = kd3::KdTree<kd3::limits<KD3_BASE_TYPE, KD3_DIMENSIONS, KD3_DISTANCE_TYPE>, cfg>;
 
 namespace {
     /**
@@ -204,16 +246,18 @@ KD3$(tree_t) *KD3$(tree_create)(const KD3$(point_t) *points,
                                 KD3$(error_t) *error)
 {
     if (!points || npoints == 0) {
-        if (error) *error = KD3$(EmptyInput);          // EmptyInput
+        if (error) *error = KD3$(EmptyInput);
         return nullptr;
     }
     
     // Convert C points to the C++ type (no allocation, just a view)
-    std::span<Tree::FatPoint> span((Tree::FatPoint*)points, npoints);
+    std::span<const Tree::FatPoint> span((const Tree::FatPoint*)points, npoints);
 
-    auto maybe = Tree::build(span);
+    // Casting away const since KdTree::build mutates the array to sort it. 
+    // This maintains the original behavior where the C array was mutated.
+    auto maybe = Tree::build(std::span<Tree::FatPoint>(const_cast<Tree::FatPoint*>(span.data()), span.size()));
     if (!maybe) {
-        if (error) *error = (KD3$(error_t))maybe.error();          // Currently only EmptyInput
+        if (error) *error = (KD3$(error_t))maybe.error();
         return nullptr;
     }
 
@@ -228,51 +272,103 @@ void KD3$(tree_destroy)(KD3$(tree_t) *tree)
     delete reinterpret_cast<TreeHandle*>(tree);
 }
 
-
-int KD3$(tree_query_ray)(const KD3$(tree_t) *tree,
-                         const float ro[3],
-                         const float rd[3],
-                         float max_t,
-                         float radius,
-                         KD3$(ray_hit_t) *out)
+KD3$(error_t) KD3$(tree_query_ray)(const KD3$(tree_t) *tree,
+                                   const KD3$(scalar_t) ro[KD3_DIMENSIONS],
+                                   const KD3$(scalar_t) rd[KD3_DIMENSIONS],
+                                   KD3$(scalar_t) max_t,
+                                   KD3$(scalar_t) radius,
+                                   KD3$(ray_hit_t) *out)
 {
-    if (!tree || !out) return 1;
+    if (!tree || !out) return KD3$(EmptyInput);
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    auto opt = handle->tree->query_ray(Tree::point_t{ro[0], ro[1], ro[2]},Tree::point_t{rd[0], rd[1], rd[2]},max_t,radius);
-    if (!opt) return 1;   // empty tree
+    Tree::point_t p_ro, p_rd;
+    for(size_t i=0; i<KD3_DIMENSIONS; ++i) { p_ro[i] = ro[i]; p_rd[i] = rd[i]; }
 
-    out->t     = opt->t;
-    out->payload_id  = opt->payload_id;
-    return 0;
+    auto opt = handle->tree->query_ray(p_ro, p_rd, max_t, radius);
+    if (!opt) return (KD3$(error_t))opt.error();
+
+    out->t = opt->t;
+    out->payload_id = opt->payload_id;
+    return KD3$(Ok);
+}
+
+KD3$(error_t) KD3$(tree_query_ray_distance)(const KD3$(tree_t) *tree,
+                                            const KD3$(scalar_t) ro[KD3_DIMENSIONS],
+                                            const KD3$(scalar_t) rd[KD3_DIMENSIONS],
+                                            KD3$(scalar_t) max_t,
+                                            KD3$(scalar_t) radius,
+                                            KD3$(distance_t) *out)
+{
+    if (!tree || !out) return KD3$(EmptyInput);
+
+    const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
+    Tree::point_t p_ro, p_rd;
+    for(size_t i=0; i<KD3_DIMENSIONS; ++i) { p_ro[i] = ro[i]; p_rd[i] = rd[i]; }
+
+    auto opt = handle->tree->query_ray_distance(p_ro, p_rd, max_t, radius);
+    if (!opt) return (KD3$(error_t))opt.error();
+
+    *out = *opt;
+    return KD3$(Ok);
 }
 
 KD3$(error_t) KD3$(tree_query_1nn)(const KD3$(tree_t) *tree,
-                                   const float target[3],
+                                   const KD3$(scalar_t) target[KD3_DIMENSIONS],
                                    KD3$(knn_result_t) *out)
 {
-    if (!tree || !out) return KD3$(EmptyContainer);
+    if (!tree || !out) return KD3$(EmptyInput);
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    auto opt = handle->tree->query_1nn(Tree::point_t{target[0], target[1], target[2]});
-    if (!opt) return KD3$(EmptyContainer);   // empty tree
+    Tree::point_t pt;
+    for(size_t i=0; i<KD3_DIMENSIONS; ++i) pt[i] = target[i];
 
-    out->dist_sq     = opt->dist_sq;
-    out->payload_id  = opt->payload_id;
+    auto opt = handle->tree->query_1nn(pt);
+    if (!opt) return (KD3$(error_t))opt.error();
+
+    out->dist_sq = opt->dist_sq;
+    out->payload_id = opt->payload_id;
+    return KD3$(Ok);
+}
+
+KD3$(error_t) KD3$(tree_query_distance2)(const KD3$(tree_t) *tree,
+                                         const KD3$(scalar_t) target[KD3_DIMENSIONS],
+                                         KD3$(distance_t) *out)
+{
+    if (!tree || !out) return KD3$(EmptyInput);
+
+    const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
+    Tree::point_t pt;
+    for(size_t i=0; i<KD3_DIMENSIONS; ++i) pt[i] = target[i];
+
+    auto opt = handle->tree->query_distance2(pt);
+    if (!opt) return (KD3$(error_t))opt.error();
+
+    *out = *opt;
     return KD3$(Ok);
 }
 
 KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
-                                   const float target[3],
+                                   const KD3$(scalar_t) target[KD3_DIMENSIONS],
                                    KD3$(knn_result_t) *results,
                                    size_t* k)
 {
-    if (!tree || k == 0 || !results){k[0]=0;return KD3$(Ok);}
+    if (!tree || k == nullptr || !results) { 
+        if (k) *k = 0; 
+        return KD3$(EmptyInput);
+    }
 
     const auto *handle = reinterpret_cast<const TreeHandle*>(tree);
-    auto ret = handle->tree->query_knn(Tree::point_t{target[0], target[1], target[2]}, {(Tree::KnnResult*)results,*k});
-    if(!ret.has_value()){return (KD3$(error_t))ret.error();}
-    k[0]=ret.value().size();
+    Tree::point_t pt;
+    for(size_t i=0; i<KD3_DIMENSIONS; ++i) pt[i] = target[i];
+
+    // KnnResult has identical memory layout to kd3_knn_result_t.
+    auto ret = handle->tree->query_knn(pt, {reinterpret_cast<Tree::KnnResult*>(results), *k});
+    if(!ret.has_value()){
+        *k = 0;
+        return (KD3$(error_t))ret.error();
+    }
+    *k = ret.value().size();
     return KD3$(Ok);
 }
 #endif
@@ -288,3 +384,4 @@ KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
 #undef KD3_HAS_INDEX
 #undef KD3_THRES_THREAD
 #undef KD3_MAX_STACK_DEPTH
+#undef KD3_DIMENSIONS

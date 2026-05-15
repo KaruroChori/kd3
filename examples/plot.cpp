@@ -8,7 +8,6 @@
  * 
  */
 
-#include "kd3/query.hpp"
 #include <vector>
 #include <chrono>
 #include <random>

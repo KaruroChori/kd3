@@ -19,6 +19,7 @@
 #include <string>
 
 #include <kd3/kd3.hpp>
+#include <kd3/glsl.hpp>
 
 using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32}>;
 
@@ -36,7 +37,7 @@ struct Vec3 {
     Vec3 normalize() const { float l = length(); return l > 0.0f ? (*this * (1.0f / l)) : Vec3{0,0,0}; }
     Vec3 cross(const Vec3& o) const { return {y*o.z - z*o.y, z*o.x - x*o.z, x*o.y - y*o.x}; }
 
-    operator TreeType::point_t(){return {x,y,z};}
+    operator TreeType::point_t() const { return {x,y,z}; }
 };
 
 struct AABB {
@@ -82,82 +83,6 @@ struct alignas(16) GpuSurfel {
     float pos[3]; float radius;
     float norm[3]; float pad1;
 };
-
-// ---------------------------------------------------------
-// GLSL Fragment Shader for GPU Traversal
-// ---------------------------------------------------------
-
-constexpr char basics[] = {
-#embed "../include/kd3/query.glsl"
-, 0
-};
-
-const std::string gpu_shader_code = std::string{} + R"(
-#version 430 core
-#extension GL_ARB_gpu_shader_int64 : require
-
-out vec4 finalColor;
-
-uniform vec3 ro;
-uniform vec3 uu;
-uniform vec3 vv;
-uniform vec3 ww;
-uniform float W;
-uniform float H;
-
-// Added for the Root BBox optimization
-uniform vec3 root_bmin;
-uniform vec3 root_bmax;
-
-// --- kd3 Config ---
-#define KD3_LEAF_SIZE 32 
-#define KD3_MAX_K 8
-#define KD3_STACK_SIZE 128
-#define KD3_INF2 1e29
-
-#define KD3_BINDING_VALS 1
-#define KD3_BINDING_DIMS 2
-#define KD3_BINDING_BKS  3
-
-struct Surfel {
-    vec3 pos; float radius;
-    vec3 norm; float pad;
-};
-
-layout(std430, binding = 0) readonly buffer SurfelBuffer { Surfel surfels[]; };
-
-)" + basics +
-
-R"(
-
-float dist_sq_aabb(vec3 p, vec3 bmin, vec3 bmax) {
-    float dx = max(0.0, max(bmin.x - p.x, p.x - bmax.x));
-    float dy = max(0.0, max(bmin.y - p.y, p.y - bmax.y));
-    float dz = max(0.0, max(bmin.z - p.z, p.z - bmax.z));
-    return dx*dx + dy*dy + dz*dz;
-}
-
-void main() {
-    float u = (2.0 * gl_FragCoord.x - W) / H;
-    float v = (2.0 * gl_FragCoord.y - H) / H;
-    vec3 rd = normalize(uu * u + vv * v + ww);
-
-    Kd3RayHit res;
-
-    //float root_dist = dist_sq_aabb(p, root_bmin, root_bmax);
-    //if (root_dist > 0.001) res = Kd3RayHit(sqrt(root_dist), vec3(0,1,0));
-
-    // Direct Raytracing against the BVH AABBs!
-    if (kd3_query_ray(ro, rd, 1000.0, 0.01, res)) {
-        vec3 n = surfels[res.payload_id].norm;
-        float diff = max(0.1, dot(n, normalize(vec3(0.5, 1.0, -0.5))));
-        vec3 c = vec3(0.3, 0.6, 0.9); // Blue theme for Direct Raytracing
-        finalColor = vec4(c * diff, 1.0);
-    } else {
-        finalColor = vec4(30.0/255.0, 30.0/255.0, 45.0/255.0, 1.0);
-    }
-}
-)";
 
 // ---------------------------------------------------------
 // Application
@@ -209,6 +134,59 @@ int main() {
     auto view = kdtree.view();
 
     // 3. Setup GPU Environment
+    // Generate the GLSL implementation directly targeted for our active config
+    kd3::GlslConfig glsl_cfg;
+    glsl_cfg.prefix = "kd3";
+    glsl_cfg.binding_vals = 1;
+    glsl_cfg.binding_dims = 2;
+    glsl_cfg.binding_bks = 3;
+    glsl_cfg.stack_size = 128;
+    
+    std::string kd3_glsl = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg>(glsl_cfg);
+    
+    std::string gpu_shader_code = R"(
+        #version 430 core
+        #extension GL_ARB_gpu_shader_int64 : require
+
+        out vec4 finalColor;
+
+        uniform vec3 ro;
+        uniform vec3 uu;
+        uniform vec3 vv;
+        uniform vec3 ww;
+        uniform float W;
+        uniform float H;
+
+        // Added for the Root BBox optimization
+        uniform vec3 root_bmin;
+        uniform vec3 root_bmax;
+
+        struct Surfel {
+            vec3 pos; float radius;
+            vec3 norm; float pad;
+        };
+
+        layout(std430, binding = 0) readonly buffer SurfelBuffer { Surfel surfels[]; };
+    )" + kd3_glsl + R"(
+        void main() {
+            float u = (2.0 * gl_FragCoord.x - W) / H;
+            float v = (2.0 * gl_FragCoord.y - H) / H;
+            vec3 rd = normalize(uu * u + vv * v + ww);
+
+            Kd3RayHit res;
+
+            // Direct Raytracing against the BVH AABBs!
+            if (kd3_query_ray(ro, rd, 1000.0, 0.01, root_bmin, root_bmax, res)) {
+                vec3 n = surfels[res.payload_id].norm;
+                float diff = max(0.1, dot(n, normalize(vec3(0.5, 1.0, -0.5))));
+                vec3 c = vec3(0.3, 0.6, 0.9); // Blue theme for Direct Raytracing
+                finalColor = vec4(c * diff, 1.0);
+            } else {
+                finalColor = vec4(30.0/255.0, 30.0/255.0, 45.0/255.0, 1.0);
+            }
+        }
+    )";
+
     Shader gpu_shader = LoadShaderFromMemory(nullptr, gpu_shader_code.c_str());
     int loc_ro = GetShaderLocation(gpu_shader, "ro");
     int loc_uu = GetShaderLocation(gpu_shader, "uu");
@@ -294,8 +272,8 @@ int main() {
                     float v = (2.0f * ((H - y - 1) + 0.5f) - H) / H;
                     Vec3 rd = (uu*u + vv*v + ww).normalize();
 
-                    TreeType::point_t ro_arr = {ro.x, ro.y, ro.z};
-                    TreeType::point_t rd_arr = {rd.x, rd.y, rd.z};
+                    TreeType::point_t ro_arr = ro;
+                    TreeType::point_t rd_arr = rd;
 
                     // Direct CPU Raycast traversal! No distance sphere-marching needed!
                     auto hit_opt = view.query_ray(ro_arr, rd_arr, 1000.0f, 0.01f);

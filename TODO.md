@@ -1,0 +1,4 @@
+- Rework to support an arbitrary number of dimensions? It should not be that hard.
+- Rework to make sure the c interface has all signatures (and check the logic of the retuned errors as legacy code might be not really compatible)
+- Evaluate general consistency.
+- Rework the shaders to better mirror the behaviour of the C interface when it comes down to configuring macros. 

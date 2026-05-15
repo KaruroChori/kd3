@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 int main(){
-/* Example with three points – expand the list for as many as you need */
+    /* Example with three points – expand the list for as many as you need */
     constexpr kd3_point_t points[] = {
         /* point 0 */ { .coords = {0.0f, 0.0f, 0.0f}, .payload_id = 0 },
         /* point 1 */ { .coords = {1.0f, 2.5f, -3.0f}, .payload_id = 1 },

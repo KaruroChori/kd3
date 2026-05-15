@@ -19,6 +19,7 @@
 #include <string>
 
 #include <kd3/kd3.hpp>
+#include <kd3/glsl.hpp>
 
 using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32}>;
 
@@ -55,13 +56,6 @@ struct AABB {
 };
 
 struct Surfel { Vec3 position; Vec3 normal; float radius; };
-struct QueryResult { float dist; Vec3 normal; };
-
-QueryResult evaluate_surfel(const Vec3& p, float dist_to_point_sq, int idx, const std::vector<Surfel>& surfels) {
-    if (idx == -1) return {1000.0f, {0,1,0}};
-    float exact_dist = std::sqrt(dist_to_point_sq) - (surfels[idx].radius * 0.65f);
-    return { exact_dist, surfels[idx].normal };
-}
 
 // ---------------------------------------------------------
 // Twisted Box SDF. It breaks field conditions, but baking it into a kd-tree restores its exactness.
@@ -90,16 +84,74 @@ struct alignas(16) GpuSurfel {
     float norm[3]; float pad1;
 };
 
-// ---------------------------------------------------------
-// GLSL Fragment Shader for GPU Traversal
-// ---------------------------------------------------------
+struct QueryResult { float dist; Vec3 normal; };
 
-constexpr char basics[] = {
-    #embed "../include/kd3/query.glsl"
-    ,0
-};
+QueryResult evaluate_surfel(const Vec3& p, float dist_to_point_sq, int idx, const std::vector<Surfel>& surfels) {
+    if (idx == -1) return {1000.0f, {0,1,0}};
+    float exact_dist = std::sqrt(dist_to_point_sq) - (surfels[idx].radius * 0.65f);
+    return { exact_dist, surfels[idx].normal };
+}
 
-const std::string gpu_shader_code = std::string{} + R"(
+
+// ---------------------------------------------------------
+// Application
+// ---------------------------------------------------------
+int main() {
+    const int W = 640, H = 480;
+    InitWindow(W, H, "kd3 demo renderer");
+    SetTargetFPS(0); // VSYNC off to benchmark "raw" render time
+
+    std::cout << "Sampling SDF Surface...\n";
+    std::vector<Surfel> master_points;
+    AABB root_aabb; // Track global limits
+
+    const float step = 0.01f;
+    for(float x = -2.0f; x <= 2.0f; x += step) {
+        for(float y = -2.0f; y <= 2.0f; y += step) {
+            for(float z = -2.0f; z <= 2.0f; z += step) {
+                if (std::abs(sdf_twisted_box({x,y,z})) < step * 0.8f) {
+                    master_points.push_back({{x,y,z}, sdf_gradient({x,y,z}), step * 1.5f});
+                    root_aabb.grow({x, y, z});
+                }
+            }
+        }
+    }
+    std::cout << "Points generated: " << master_points.size() << "\n\n";
+
+    // 1. Prepare points for kd3
+    std::vector<TreeType::FatPoint> build_points(master_points.size());
+    for (size_t i = 0; i < master_points.size(); ++i) {
+        build_points[i].coords[0] = master_points[i].position.x;
+        build_points[i].coords[1] = master_points[i].position.y;
+        build_points[i].coords[2] = master_points[i].position.z;
+        build_points[i].payload_id = i;
+    }
+
+    // 2. Build KdTree natively utilizing LEAF_SIZE = 8 for 1:1 GLSL SSBO matching
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto tree_expected = TreeType::build(build_points);
+    if (!tree_expected) {
+        std::cerr << "Failed to build tree! Empty input?\n";
+        return 1;
+    }
+    TreeType kdtree = std::move(tree_expected.value());
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "KdTree Built in: " 
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() 
+              << " ms\n\n";
+
+    // Obtain Trivially-Copyable View
+    auto view = kdtree.view();
+
+    // Generate GPU GLSL Code matching our C++ template exactly
+    kd3::GlslConfig glsl_cfg;
+    glsl_cfg.prefix = "kd3";
+    glsl_cfg.binding_vals = 1;
+    glsl_cfg.binding_dims = 2;
+    glsl_cfg.binding_bks = 3;
+    std::string glsl_kd3 = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg>(glsl_cfg);
+
+    const std::string gpu_shader_code = std::string{} + R"(
 #version 430 core
 #extension GL_ARB_gpu_shader_int64 : require
 
@@ -116,16 +168,6 @@ uniform float H;
 uniform vec3 root_bmin;
 uniform vec3 root_bmax;
 
-// --- kd3 Config ---
-#define KD3_LEAF_SIZE 32 
-#define KD3_MAX_K 8
-#define KD3_STACK_SIZE 128
-#define KD3_INF2 1e29
-
-#define KD3_BINDING_VALS 1
-#define KD3_BINDING_DIMS 2
-#define KD3_BINDING_BKS  3
-
 // --- Structs & Buffers ---
 struct Surfel {
     vec3 pos; float radius;
@@ -134,10 +176,7 @@ struct Surfel {
 
 layout(std430, binding = 0) readonly buffer SurfelBuffer { Surfel surfels[]; };
 
-
-)" + basics +
-
-R"(
+)" + glsl_kd3 + R"(
 
 // --- Raymarching ---
 struct QueryResult { float dist; vec3 normal; };
@@ -190,58 +229,6 @@ void main() {
     }
 }
 )";
-
-// ---------------------------------------------------------
-// Application
-// ---------------------------------------------------------
-int main() {
-    const int W = 640, H = 480;
-    InitWindow(W, H, "kd3 demo renderer");
-    SetTargetFPS(0); // VSYNC off to benchmark "raw" render time
-
-    std::cout << "Sampling SDF Surface...\n";
-    std::vector<Surfel> master_points;
-    AABB root_aabb; // Track global limits
-
-    // Change this if you want to "increase resolution".
-    // No decimation of points in this demo, so watch out for your PC EXPUROOOSION 🧙🏽✨💥
-    const float step = 0.01f;
-    for(float x = -2.0f; x <= 2.0f; x += step) {
-        for(float y = -2.0f; y <= 2.0f; y += step) {
-            for(float z = -2.0f; z <= 2.0f; z += step) {
-                if (std::abs(sdf_twisted_box({x,y,z})) < step * 0.8f) {
-                    master_points.push_back({{x,y,z}, sdf_gradient({x,y,z}), step * 1.5f});
-                    root_aabb.grow({x, y, z});
-                }
-            }
-        }
-    }
-    std::cout << "Points generated: " << master_points.size() << "\n\n";
-
-    // 1. Prepare points for kd3
-    std::vector<TreeType::FatPoint> build_points(master_points.size());
-    for (size_t i = 0; i < master_points.size(); ++i) {
-        build_points[i].coords[0] = master_points[i].position.x;
-        build_points[i].coords[1] = master_points[i].position.y;
-        build_points[i].coords[2] = master_points[i].position.z;
-        build_points[i].payload_id = i;
-    }
-
-    // 2. Build KdTree natively utilizing LEAF_SIZE = 8 for 1:1 GLSL SSBO matching
-    auto t1 = std::chrono::high_resolution_clock::now();
-    auto tree_expected = TreeType::build(build_points);
-    if (!tree_expected) {
-        std::cerr << "Failed to build tree! Empty input?\n";
-        return 1;
-    }
-    TreeType kdtree = std::move(tree_expected.value());
-    auto t2 = std::chrono::high_resolution_clock::now();
-    std::cout << "KdTree Built in: " 
-              << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() 
-              << " ms\n\n";
-
-    // Obtain Trivially-Copyable View
-    auto view = kdtree.view();
 
     // 3. Setup GPU Environment
     Shader gpu_shader = LoadShaderFromMemory(nullptr, gpu_shader_code.c_str());
