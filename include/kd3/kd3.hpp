@@ -261,7 +261,7 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return The closest point hit, or error codes.
      */
-    std::expected<RayHit, error_t> query_ray(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
+    KD3_INLINE std::expected<RayHit, error_t> query_ray(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
         return view().query_ray(ro, rd, max_t, radius);
     }
 
@@ -274,7 +274,7 @@ public:
      * @param radius Optional. Represents the mathematical thickness of the ray (Cylinder query).
      * @return The distance to the closest point hit, or error codes.
      */
-    std::expected<distance_t, error_t> query_ray_distance(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
+    KD3_INLINE std::expected<distance_t, error_t> query_ray_distance(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
         return view().query_ray_distance(ro, rd, max_t, radius);
     }
 
@@ -284,7 +284,7 @@ public:
      * @param target scalar_t array representing the query coordinates.
      * @return The closest point found, or error codes.
      */
-    std::expected<KnnResult, error_t> query_1nn(const point_t target) const noexcept {
+    KD3_INLINE std::expected<KnnResult, error_t> query_1nn(const point_t target) const noexcept {
         return view().query_1nn(target);
     }
 
@@ -294,7 +294,7 @@ public:
      * @param target scalar_t array representing the query coordinates.
      * @return The closest point found, or error codes.
      */
-    std::expected<distance_t, error_t> query_distance2(const point_t target) const noexcept {
+    KD3_INLINE std::expected<distance_t, error_t> query_distance2(const point_t target) const noexcept {
         return view().query_distance2(target);
     }
 
@@ -305,8 +305,28 @@ public:
      * @param buffer A pre-allocated span used to store and manage the max-heap of results. 
      * @return A subspan of the buffer containing the found results, sorted from nearest to furthest. Or error codes.
      */
-    std::expected<std::span<KnnResult>, error_t> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
+    KD3_INLINE std::expected<std::span<KnnResult>, error_t> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
         return view().query_knn(target, buffer);
+    }
+
+    KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
+        return view().query_ray_inline(ro, rd, max_t, radius);
+    }
+
+    KD3_INLINE std::expected<distance_t, error_t> query_ray_distance_inline(const point_t ro, const point_t rd, scalar_t max_t=Limits::INF, scalar_t radius={}) const noexcept {
+        return view().query_ray_distance_inline(ro, rd, max_t, radius);
+    }
+
+    KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
+        return view().query_1nn_inline(target);
+    }
+
+    KD3_INLINE std::expected<distance_t, error_t> query_distance2_inline(const point_t target) const noexcept {
+        return view().query_distance2_inline(target);
+    }
+
+    KD3_INLINE std::expected<std::span<KnnResult>, error_t> query_knn_inline(const point_t target, std::span<KnnResult> buffer) const noexcept {
+        return view().query_knn_inline(target, buffer);
     }
 
     void set_bbox(point_t min, point_t max){

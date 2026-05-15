@@ -129,7 +129,7 @@ int main() {
     size_t dummy_kd3 = 0;
     for (const auto& q : queries) {
         std::array<TreeType::KnnResult, K> storage{};
-        auto res = *tree.query_knn(q, storage);
+        auto res = *tree.query_knn_inline(q, storage);
         dummy_kd3 += res.front().payload_id;
     }
     auto t4 = std::chrono::high_resolution_clock::now();

@@ -14,7 +14,7 @@ using TreeType = kd3::KdTree<kd3::limits<Type>,{.leaf_size=PARALLELISM*sizeof(fl
 // ---------------------------------------------------------
 // Baseline Brute Force validation
 // ---------------------------------------------------------
-std::vector<TreeType::KnnResult> linear_scan(const TreeType::scalar_t target[3], size_t k, std::span<const TreeType::FatPoint> points) {
+KD3_INLINE std::vector<TreeType::KnnResult> linear_scan(const TreeType::scalar_t target[3], size_t k, std::span<const TreeType::FatPoint> points) {
     std::vector<TreeType::KnnResult> heap;
     heap.reserve(k + 1);
     for (const auto& p : points) {
@@ -87,7 +87,7 @@ int main() {
         auto t3 = std::chrono::high_resolution_clock::now();
         for (const auto& q : queries) {
             std::array<TreeType::KnnResult,K> storage{};
-            auto res = *tree.query_knn(q, storage);
+            auto res = *tree.query_knn_inline(q, storage);
             dummy += res.front().payload_id;
         }
         auto t4 = std::chrono::high_resolution_clock::now();
@@ -105,7 +105,7 @@ int main() {
 
         // Validation Check (Run 1 query against linear scan to verify correctness)
         std::array<TreeType::KnnResult,K> storage{};
-        auto kd_res = *tree.query_knn(queries[i%1000], storage);
+        auto kd_res = *tree.query_knn_inline(queries[i%1000], storage);
         
         auto t5 = std::chrono::high_resolution_clock::now();
         auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);
@@ -154,7 +154,7 @@ int main() {
 
         // Validation Check (Run 1 query against linear scan to verify correctness)
         std::array<TreeType::KnnResult,K> storage{};
-        auto kd_res = *tree.query_knn(queries[i%1000], storage);
+        auto kd_res = *tree.query_knn_inline(queries[i%1000], storage);
         
         auto t5 = std::chrono::high_resolution_clock::now();
         auto brute_res = linear_scan(queries[i%1000].data(), K, points_copy);

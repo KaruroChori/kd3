@@ -16,6 +16,9 @@
 #include <array>
 #include <bit>
 
+//TODO: change a bit to make it more compatible with other compilers as well.
+#define KD3_INLINE __attribute__((always_inline))
+
 namespace kd3 {
 
 using std::sort;
@@ -185,7 +188,7 @@ public:
      * @param i Node index.
      * @return uint8_t The dimension (0 for X, 1 for Y, 2 for Z).
      */
-    inline uint8_t get_dim(size_t i) const noexcept {
+    KD3_INLINE uint8_t get_dim(size_t i) const noexcept {
         size_t block = i / dims_per_word;
         size_t offset = (i % dims_per_word) * dim_bits;
         return (split_dims[block] >> offset) & dim_mask;
@@ -201,6 +204,10 @@ public:
      * @return  The closest point hit, or error.
      */
     std::expected<RayHit, error_t> query_ray(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
+        return query_ray_inline(ro, rd, max_t, radius);
+    }
+
+    KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
         if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
         if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
@@ -342,6 +349,10 @@ public:
      * @return  The distance to the closest point hit, or error.
      */
     std::expected<distance_t, error_t> query_ray_distance(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
+        return query_ray_distance_inline(ro,rd,max_t,radius);
+    }
+
+    KD3_INLINE std::expected<distance_t, error_t> query_ray_distance_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
         if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -468,7 +479,11 @@ public:
      * @param target 3-scalar_t array representing the query coordinates.
      * @return The closest point found, or error.
      */
-    std::expected<KnnResult, error_t> query_1nn(const point_t target) const noexcept {
+    KD3_INLINE std::expected<KnnResult, error_t> query_1nn(const point_t target) const noexcept {
+        return query_1nn_inline(target);
+    }
+
+    KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
         if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -541,6 +556,10 @@ public:
      * @return A subspan of the buffer containing the found results, sorted from nearest to furthest. Or error.
      */
     std::expected<std::span<KnnResult>, error_t> query_knn(const point_t target, std::span<KnnResult> buffer) const noexcept {
+        return query_knn_inline(target, buffer);
+    }
+
+    KD3_INLINE std::expected<std::span<KnnResult>, error_t> query_knn_inline(const point_t target, std::span<KnnResult> buffer) const noexcept {
         if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -549,7 +568,7 @@ public:
         
         size_t heap_size = 0;
 
-        auto push_heap = [&](distance_t dist, uint32_t id) {
+        auto push_heap = [&](distance_t dist, uint32_t id) KD3_INLINE {
             if (heap_size < k) {
                 buffer[heap_size] = {dist, id};
                 heap_size++;
@@ -632,6 +651,10 @@ public:
      * @return The distance to the closest point found, or error.
      */
     std::expected<distance_t,error_t> query_distance2(const point_t target) const noexcept {
+        return query_distance2_inline(target);
+    }
+
+    KD3_INLINE std::expected<distance_t,error_t> query_distance2_inline(const point_t target) const noexcept {
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         distance_t min_dist_sq = std::numeric_limits<distance_t>::max();

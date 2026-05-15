@@ -20,7 +20,7 @@ It is not the most complete nor the most flexible, but it is what it needsto be,
 #include <vector>
 #include <array>
 
-using TreeType = kd3::KdTree<kd3::limits<float>, {.LEAF_SIZE=32}>;
+using TreeType = kd3::KdTree<kd3::limits<float>, {.leaf_size=32}>;
 
 int main() {
     // 1. Prepare your data
@@ -49,7 +49,7 @@ int main() {
 
     // 4. Query K-Nearest Neighbors
     std::array<TreeType::KnnResult, 2> knn_buffer{};
-    auto knn_results = tree.query_knn(target, knn_buffer);
+    auto knn_results = *tree.query_knn(target, knn_buffer);
     
     for (const auto& res : knn_results) {
         std::cout << "Found ID: " << res.payload_id << "\n";
