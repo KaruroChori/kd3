@@ -9,7 +9,7 @@
 constexpr size_t PARALLELISM = 32;
 
 using Type = float;
-using TreeType = kd3::KdTree<kd3::limits<Type>,{.leaf_size=PARALLELISM*sizeof(float)/sizeof(Type), .had_index=false}>;
+using TreeType = kd3::KdTree<kd3::limits<Type>,{.leaf_size=PARALLELISM*sizeof(float)/sizeof(Type), .has_index=false}>;
 
 // ---------------------------------------------------------
 // Baseline Brute Force validation

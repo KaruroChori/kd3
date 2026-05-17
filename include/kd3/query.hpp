@@ -17,7 +17,7 @@
 #include <bit>
 
 //TODO: change a bit to make it more compatible with other compilers as well.
-#define KD3_INLINE __attribute__((always_inline))
+#define KD3_INLINE inline __attribute__((always_inline))
 
 namespace kd3 {
 
@@ -104,7 +104,7 @@ struct cfg_t{
     size_t max_stack_depth = 48*2;
     size_t thres_thread = 10'000;
     size_t leaf_size = simd_parallelism*4;
-    bool   had_index = true;
+    bool   has_index = true;
 };
 
 // ---------------------------------------------------------
@@ -147,7 +147,7 @@ public:
     */
     struct LeafBucket {
         alignas(std::min<size_t>(64, cfg.simd_parallelism*8)) scalar_t coords[Limits::D][cfg.leaf_size];
-        uint32_t ids[cfg.had_index?cfg.leaf_size:0];
+        uint32_t ids[cfg.has_index?cfg.leaf_size:0];
     };
 
     /**
@@ -208,7 +208,7 @@ public:
     }
 
     KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
-        if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
         if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -484,7 +484,7 @@ public:
     }
 
     KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
-        if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
@@ -560,7 +560,7 @@ public:
     }
 
     KD3_INLINE std::expected<std::span<KnnResult>, error_t> query_knn_inline(const point_t target, std::span<KnnResult> buffer) const noexcept {
-        if constexpr (!cfg.had_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         const size_t k = buffer.size();
@@ -568,7 +568,7 @@ public:
         
         size_t heap_size = 0;
 
-        auto push_heap = [&](distance_t dist, uint32_t id) KD3_INLINE {
+        auto push_heap = [&](distance_t dist, uint32_t id) {
             if (heap_size < k) {
                 buffer[heap_size] = {dist, id};
                 heap_size++;

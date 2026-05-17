@@ -144,12 +144,14 @@ int main() {
     auto view = kdtree.view();
 
     // Generate GPU GLSL Code matching our C++ template exactly
-    kd3::GlslConfig glsl_cfg;
-    glsl_cfg.prefix = "kd3";
-    glsl_cfg.binding_vals = 1;
-    glsl_cfg.binding_dims = 2;
-    glsl_cfg.binding_bks = 3;
-    std::string glsl_kd3 = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg>(glsl_cfg);
+    constexpr kd3::GlslConfig glsl_cfg {
+        .binding_vals = 1,
+        .binding_dims = 2,
+        .binding_bks = 3,
+        .max_stack_depth = 128
+    };
+
+    std::string glsl_kd3 = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg, glsl_cfg>();
 
     const std::string gpu_shader_code = std::string{} + R"(
 #version 430 core

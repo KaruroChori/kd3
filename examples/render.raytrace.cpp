@@ -135,15 +135,15 @@ int main() {
 
     // 3. Setup GPU Environment
     // Generate the GLSL implementation directly targeted for our active config
-    kd3::GlslConfig glsl_cfg;
-    glsl_cfg.prefix = "kd3";
-    glsl_cfg.binding_vals = 1;
-    glsl_cfg.binding_dims = 2;
-    glsl_cfg.binding_bks = 3;
-    glsl_cfg.stack_size = 128;
+    constexpr kd3::GlslConfig glsl_cfg {
+        .binding_vals = 1,
+        .binding_dims = 2,
+        .binding_bks = 3,
+        .max_stack_depth = 128
+    };
     
-    std::string kd3_glsl = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg>(glsl_cfg);
-    
+    std::string kd3_glsl = kd3::generate_glsl<kd3::limits<float>, TreeType::cfg, glsl_cfg>();
+
     std::string gpu_shader_code = R"(
         #version 430 core
         #extension GL_ARB_gpu_shader_int64 : require

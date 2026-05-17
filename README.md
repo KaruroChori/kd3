@@ -1,12 +1,12 @@
 A 「✨blazingly fast✨」[^1] library for kd-trees, for objects defined by `vec3<float32>` keys.  
-It uses nearly all tricks I was able to get out of my hat to make it as fast as possible: OpenMP for multithreading, SIMD when feasible, AoS/SoA design etc.  
-It is not the most complete nor the most flexible, but it is what it needsto be, and within its narrow scope it works remarkably well.  
+It uses nearly all tricks I was able to get out of my hat to make it as fast as possible: OpenMP for multithreading, SIMD-friendly when feasible, AoS/SoA design etc.  
+It is not the most complete nor the most flexible, but it is what it needs to be, and within its narrow scope it works remarkably well.  
 
 ## Features
 
 - **Header-Only:** drop `include/kd3/*` into your project and you are good to go. You are not tied to `xmake` as you build system.  
-- **Extremely fast!** like for real. k-NN queries are more than [2x](./docs/benchmarking.md) fast compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
-- **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading (CUDA, SYCL, OpenMP Target) and memory mapped files.
+- **Extremely fast!** Like for real! k-NN queries are more than [2x](./docs/benchmarking.md) fast compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
+- **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading (CUDA, SYCL, OpenMP Target) or memory mapped files.
 - **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
 - **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. They are distributed in a standalone header so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
 - **C-API Available:** a C interface wrapper is provided for FFI integration.

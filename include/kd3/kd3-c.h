@@ -226,7 +226,7 @@ constexpr kd3::cfg_t cfg{
     .max_stack_depth = KD3_MAX_STACK_DEPTH,
     .thres_thread = KD3_THRES_THREAD,
     .leaf_size = KD3_LEAF_SIZE,
-    .had_index = KD3_HAS_INDEX
+    .has_index = KD3_HAS_INDEX
 };
 
 using Tree = kd3::KdTree<kd3::limits<KD3_BASE_TYPE, KD3_DIMENSIONS, KD3_DISTANCE_TYPE>, cfg>;
