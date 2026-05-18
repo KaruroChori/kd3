@@ -1,0 +1,82 @@
+Starting kd3 LEAF_SIZE Characterization Sweep (5 trials per config)...
+
+--- Tree Size: 100000 points ---
+  LEAF_SIZE:  1 | Build:    8.8 ms | Query P50: 450.0 ns (P99: 1210.0)
+  LEAF_SIZE:  2 | Build:    8.0 ms | Query P50: 350.0 ns (P99: 880.0)
+  LEAF_SIZE:  4 | Build:    5.7 ms | Query P50: 280.0 ns (P99: 700.0)
+  LEAF_SIZE:  8 | Build:    3.1 ms | Query P50: 250.0 ns (P99: 600.0)
+  LEAF_SIZE: 16 | Build:    5.9 ms | Query P50: 230.0 ns (P99: 560.0)
+  LEAF_SIZE: 32 | Build:    2.6 ms | Query P50: 230.0 ns (P99: 600.0)
+  LEAF_SIZE: 64 | Build:    2.5 ms | Query P50: 250.0 ns (P99: 630.0)
+  LEAF_SIZE: 128 | Build:    2.3 ms | Query P50: 250.0 ns (P99: 750.0)
+  LEAF_SIZE: 256 | Build:    5.6 ms | Query P50: 270.0 ns (P99: 780.0)
+
+--- Tree Size: 500000 points ---
+  LEAF_SIZE:  1 | Build:   14.0 ms | Query P50: 490.0 ns (P99: 1560.0)
+  LEAF_SIZE:  2 | Build:   12.8 ms | Query P50: 390.0 ns (P99: 1180.0)
+  LEAF_SIZE:  4 | Build:   14.2 ms | Query P50: 310.0 ns (P99: 900.0)
+  LEAF_SIZE:  8 | Build:   15.9 ms | Query P50: 260.0 ns (P99: 750.0)
+  LEAF_SIZE: 16 | Build:   11.3 ms | Query P50: 240.0 ns (P99: 720.0)
+  LEAF_SIZE: 32 | Build:   12.9 ms | Query P50: 240.0 ns (P99: 750.0)
+  LEAF_SIZE: 64 | Build:   14.1 ms | Query P50: 240.0 ns (P99: 700.0)
+  LEAF_SIZE: 128 | Build:   14.9 ms | Query P50: 260.0 ns (P99: 790.0)
+  LEAF_SIZE: 256 | Build:   13.4 ms | Query P50: 270.0 ns (P99: 910.0)
+
+--- Tree Size: 1000000 points ---
+  LEAF_SIZE:  1 | Build:   28.1 ms | Query P50: 510.0 ns (P99: 1800.0)
+  LEAF_SIZE:  2 | Build:   25.9 ms | Query P50: 390.0 ns (P99: 1240.0)
+  LEAF_SIZE:  4 | Build:   28.5 ms | Query P50: 330.0 ns (P99: 1000.0)
+  LEAF_SIZE:  8 | Build:   25.5 ms | Query P50: 300.0 ns (P99: 900.0)
+  LEAF_SIZE: 16 | Build:   25.4 ms | Query P50: 260.0 ns (P99: 810.0)
+  LEAF_SIZE: 32 | Build:   24.6 ms | Query P50: 240.0 ns (P99: 830.0)
+  LEAF_SIZE: 64 | Build:   22.6 ms | Query P50: 240.0 ns (P99: 770.0)
+  LEAF_SIZE: 128 | Build:   23.9 ms | Query P50: 280.0 ns (P99: 900.0)
+  LEAF_SIZE: 256 | Build:   24.1 ms | Query P50: 280.0 ns (P99: 970.0)
+
+--- Tree Size: 5000000 points ---
+  LEAF_SIZE:  1 | Build:  129.9 ms | Query P50: 940.0 ns (P99: 3240.0)
+  LEAF_SIZE:  2 | Build:  120.6 ms | Query P50: 640.0 ns (P99: 2210.0)
+  LEAF_SIZE:  4 | Build:  121.6 ms | Query P50: 460.0 ns (P99: 1610.0)
+  LEAF_SIZE:  8 | Build:  110.8 ms | Query P50: 380.0 ns (P99: 1220.0)
+  LEAF_SIZE: 16 | Build:  108.4 ms | Query P50: 350.0 ns (P99: 1250.0)
+  LEAF_SIZE: 32 | Build:  103.4 ms | Query P50: 320.0 ns (P99: 1100.0)
+  LEAF_SIZE: 64 | Build:  103.2 ms | Query P50: 310.0 ns (P99: 1100.0)
+  LEAF_SIZE: 128 | Build:  103.3 ms | Query P50: 340.0 ns (P99: 1210.0)
+  LEAF_SIZE: 256 | Build:  106.8 ms | Query P50: 410.0 ns (P99: 1480.0)
+
+--- Tree Size: 10000000 points ---
+  LEAF_SIZE:  1 | Build:  267.4 ms | Query P50: 1150.0 ns (P99: 3620.0)
+  LEAF_SIZE:  2 | Build:  247.9 ms | Query P50: 900.0 ns (P99: 2950.0)
+  LEAF_SIZE:  4 | Build:  251.9 ms | Query P50: 660.0 ns (P99: 2220.0)
+  LEAF_SIZE:  8 | Build:  221.4 ms | Query P50: 580.0 ns (P99: 1950.0)
+  LEAF_SIZE: 16 | Build:  220.3 ms | Query P50: 500.0 ns (P99: 1810.0)
+  LEAF_SIZE: 32 | Build:  211.5 ms | Query P50: 440.0 ns (P99: 1640.0)
+  LEAF_SIZE: 64 | Build:  203.6 ms | Query P50: 420.0 ns (P99: 1560.0)
+  LEAF_SIZE: 128 | Build:  217.1 ms | Query P50: 460.0 ns (P99: 1690.0)
+  LEAF_SIZE: 256 | Build:  216.0 ms | Query P50: 480.0 ns (P99: 1810.0)
+
+--- Tree Size: 50000000 points ---
+  LEAF_SIZE:  1 | Build: 1353.4 ms | Query P50: 1620.0 ns (P99: 4840.0)
+  LEAF_SIZE:  2 | Build: 1257.9 ms | Query P50: 1320.0 ns (P99: 3970.0)
+  LEAF_SIZE:  4 | Build: 1308.3 ms | Query P50: 1120.0 ns (P99: 3340.0)
+  LEAF_SIZE:  8 | Build: 1158.9 ms | Query P50: 970.0 ns (P99: 2920.0)
+  LEAF_SIZE: 16 | Build: 1147.6 ms | Query P50: 850.0 ns (P99: 2740.0)
+  LEAF_SIZE: 32 | Build: 1105.5 ms | Query P50: 740.0 ns (P99: 2360.0)
+  LEAF_SIZE: 64 | Build: 1121.0 ms | Query P50: 630.0 ns (P99: 2100.0)
+  LEAF_SIZE: 128 | Build: 1144.4 ms | Query P50: 600.0 ns (P99: 2050.0)
+  LEAF_SIZE: 256 | Build: 1086.7 ms | Query P50: 630.0 ns (P99: 2170.0)
+
+--- Tree Size: 100000000 points ---
+  LEAF_SIZE:  1 | Build: 2656.8 ms | Query P50: 1810.0 ns (P99: 5190.0)
+  LEAF_SIZE:  2 | Build: 2396.8 ms | Query P50: 1470.0 ns (P99: 4180.0)
+  LEAF_SIZE:  4 | Build: 2450.4 ms | Query P50: 1270.0 ns (P99: 3640.0)
+  LEAF_SIZE:  8 | Build: 2273.3 ms | Query P50: 1100.0 ns (P99: 3110.0)
+  LEAF_SIZE: 16 | Build: 2197.4 ms | Query P50: 970.0 ns (P99: 2960.0)
+  LEAF_SIZE: 32 | Build: 2157.9 ms | Query P50: 870.0 ns (P99: 2630.0)
+  LEAF_SIZE: 64 | Build: 2117.9 ms | Query P50: 730.0 ns (P99: 2310.0)
+  LEAF_SIZE: 128 | Build: 2197.8 ms | Query P50: 700.0 ns (P99: 2240.0)
+  LEAF_SIZE: 256 | Build: 2160.9 ms | Query P50: 690.0 ns (P99: 2270.0)
+
+Results rendered directly to kd3_leaf_report.html
+Open it in any browser.
+

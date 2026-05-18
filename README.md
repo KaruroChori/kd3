@@ -1,16 +1,16 @@
-A 「✨blazingly fast✨」[^1] library for kd-trees, for objects defined by `vec3<float32>` keys.  
+A 「✨blazingly fast✨」[^1] library for kd-trees, for keys of small dimensionality (ideally 2,3,4 but it can do more).  
 It uses nearly all tricks I was able to get out of my hat to make it as fast as possible: OpenMP for multithreading, SIMD-friendly when feasible, AoS/SoA design etc.  
 It is not the most complete nor the most flexible, but it is what it needs to be, and within its narrow scope it works remarkably well.  
 
 ## Features
 
-- **Header-Only:** drop `include/kd3/*` into your project and you are good to go. You are not tied to `xmake` as you build system.  
+- **Header-Only:** drop `include/kd3/*` into your project, and you are good to go. You are not tied to `xmake` as you build system of choice.  
 - **Extremely fast!** Like for real! k-NN queries are more than [2x](./docs/benchmarking.md) fast compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
-- **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading (CUDA, SYCL, OpenMP Target) or memory mapped files.
+- **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading, embedded computing and storage via memory mapped files.
 - **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
-- **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. They are distributed in a standalone header so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
+- **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. This functionality is distributed as a standalone header, so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
 - **C-API Available:** a C interface wrapper is provided for FFI integration.
-- **Shader implementation:** a GLSL implementation of the query functions, allowing rendering on the GPU without OpenMP device offloading, and sharing trees computed on the CPU side. Experimental, this feature WILL[^3] change.
+- **Shader implementation:** a GLSL generator[^4] for code matching the query functions, allowing rendering on the GPU without OpenMP device offloading without recomputing the trees.
 
 ## Quick Start (C++)
 
@@ -81,10 +81,9 @@ Feel free to tweak the parameters in its [code](./examples/render.cpp) and see w
 
 ## About performance & optimizations
 
-There is a C interface available, so that it can be used even without C++; you can probably expect some mild performance degradation, but I have not tested nor characterized it yet.  
 For fastest speed, profiling optimization are strongly suggested as they have shown a meaningful boost in performance for the building time of the kd-tree.  
-
-Oh, and GCC seems to be winning in terms of optimizations, something like 15% faster on my machines compared to Clang. The difference was bigger in a prior version, but they are now more or less aligned.  
+Oh, and GCC seems to be winning in terms of optimizations, but marginally. The difference was bigger in a prior version, but they are now more or less aligned.  
+There is a C interface available, so that it can be used even without C++; you can probably expect some mild performance degradation, in my limited tests it was around 3% due to the lack of inlining.  
 
 ## Dependencies
 
@@ -130,36 +129,37 @@ Just for reference, and to calibrate your expectations, benchmarks obtained on m
 --- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
 Generating 5000000 random points...
 Building tree with OpenMP...
-Build Time: 147.218 ms
+Build Time: 138.041 ms
 -----------------------------------------------------
 Running 100000 10-nn queries via KD-Tree...
-KD-Tree Query Time: 164.895 ms (606447 QPS)
+KD-Tree Query Time: 157.997 ms (632925 QPS)
 Validating correctness against linear scan...
 [PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 4.34995 ms
-KD-Tree Speedup vs Brute: 2638.01x faster per query
+Single Brute Force Query: 2.95783 ms
+KD-Tree Speedup vs Brute: 1872.08x faster per query
 -----------------------------------------------------
 Running 100000 1-nn queries via KD-Tree...
-KD-Tree Query Time: 51.2214 ms (1.95231e+06 QPS)
+KD-Tree Query Time: 50.1974 ms (1.99214e+06 QPS)
 Validating correctness against linear scan...
 [PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 4.38412 ms
-KD-Tree Speedup vs Brute: 8559.16x faster per query
+Single Brute Force Query: 3.1092 ms
+KD-Tree Speedup vs Brute: 6193.94x faster per query
 ```
 
 and
 
 ```
---- KD-Tree (fast variant) Benchmark --- [simd: 8, parallelism: 32]
+--- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
 Generating 5000000 random points...
 Building tree with OpenMP...
-Build Time: 141.186 ms
-Running 100000 queries via KD-Tree...
-KD-Tree Query Time: 40.2201 ms (2.48632e+06 QPS)
+Build Time: 150.44 ms
+-----------------------------------------------------
+Running 100000 1-nn queries via KD-Tree...
+KD-Tree Query Time: 38.3638 ms (2.60663e+06 QPS)
 Validating correctness against linear scan...
-[FAIL] KD-Tree results differ!
-Single Brute Force Query: 3.43066 ms
-KD-Tree Speedup vs Brute: 8529.74x faster per query
+[PASS] KD-Tree results perfectly match brute force.
+Single Brute Force Query: 3.36366 ms
+KD-Tree Speedup vs Brute: 8767.81x faster per query
 ```
 
 
@@ -193,3 +193,4 @@ If you plan on using it via xmake, you can use [package.lua](./package.lua) as r
 [^1]: Yes you are allowed to throw up.
 [^2]: Unlike most of my other projects, GPU support here is via a custom GLSL implementation of the query functions and not OpenMP offloading, but it would be nice to test that as well 😊.
 [^3]: The plan is to avoid shipping glsl files to be imported, but to add a script (also invokable via CLI) to generate them, so to allow more freedom in integration.
+[^4]: Experimental! It is possible this will break in future releases as I might be interested exporing [slang](https://shader-slang.org/).
