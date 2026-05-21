@@ -8,7 +8,7 @@ authors:
   - given-names: karurochari
     affiliation: lazy-eggplant
     email: public@karurochari.com
-title: "kd3: A blazingly fast vec3 kd-tree for C++23"
+title: "kd3: A blazingly fast kd-tree for C++23"
 date-released: 2026-05-06
 url: "https://github.com/karurochori/kd3"
 repository-code: "https://github.com/karurochori/kd3"

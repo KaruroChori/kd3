@@ -188,7 +188,8 @@ If you plan on using it via xmake, you can use [package.lua](./package.lua) as r
 
 ## Licence
 
-[AGPL-3](./LICENCE.txt)
+[AGPL-3](./LICENCE.txt).  
+Feel free to contact me if you need a different arrangement for your application.
 
 [^1]: Yes you are allowed to throw up.
 [^2]: Unlike most of my other projects, GPU support here is via a custom GLSL implementation of the query functions and not OpenMP offloading, but it would be nice to test that as well 😊.

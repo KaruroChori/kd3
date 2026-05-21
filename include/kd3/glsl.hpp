@@ -8,6 +8,10 @@
  * @copyright Copyright (c) 2026
  */
 
+/*
+    Warning: This generator only covers a subset of all possible configurations, mostly as they are limited by GLSL native types.
+*/
+
 #include <string>
 #include <sstream>
 #include <algorithm>

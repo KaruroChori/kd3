@@ -371,6 +371,9 @@ KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
     *k = ret.value().size();
     return KD3$(Ok);
 }
+
+#undef KD3_CXX_IMPL
+
 #endif
 
 #undef KD3_NS
