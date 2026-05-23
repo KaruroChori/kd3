@@ -50,12 +50,16 @@ extern "C" {
 #   define KD3_DISTANCE_TYPE float
 #endif
 
+#ifndef KD3_PAYLOAD_TYPE
+#   define KD3_PAYLOAD_TYPE uint32_t
+#endif
+
 #ifndef KD3_LEAF_SIZE
 #   define KD3_LEAF_SIZE 32 //TODO: actually it shoul depend on KD3_SIMD_PARALLELISM
 #endif
 
-#ifndef KD3_HAS_INDEX
-#   define KD3_HAS_INDEX true
+#ifndef KD3_HAS_PAYLOAD
+#   define KD3_HAS_PAYLOAD INDEX
 #endif
 
 #ifndef KD3_THRES_THREAD
@@ -68,6 +72,7 @@ extern "C" {
 
 typedef KD3_BASE_TYPE     KD3$(scalar_t);
 typedef KD3_DISTANCE_TYPE KD3$(distance_t);
+typedef KD3_PAYLOAD_TYPE  KD3$(payload_t);
 
 /**
  * @brief Error states which can be returned by the library.
@@ -88,7 +93,7 @@ typedef enum  {
  */
 typedef struct {
     KD3$(scalar_t) coords[KD3_DIMENSIONS];
-    uint32_t payload_id;
+    KD3$(payload_t) payload_id;
 } KD3$(point_t);
 
 /**
@@ -97,7 +102,7 @@ typedef struct {
  */
 typedef struct {
     KD3$(distance_t) dist_sq;
-    uint32_t payload_id;
+    KD3$(payload_t)  payload_id;
 } KD3$(knn_result_t);
 
 /**
@@ -105,8 +110,8 @@ typedef struct {
  * 
  */
 typedef struct{ 
-    KD3$(scalar_t) t;
-    uint32_t payload_id;
+    KD3$(scalar_t)  t;
+    KD3$(payload_t) payload_id;
 } KD3$(ray_hit_t);
 
 /**
@@ -226,10 +231,10 @@ constexpr kd3::cfg_t cfg{
     .max_stack_depth = KD3_MAX_STACK_DEPTH,
     .thres_thread = KD3_THRES_THREAD,
     .leaf_size = KD3_LEAF_SIZE,
-    .has_index = KD3_HAS_INDEX
+    .has_payload = kd3::cfg_t::has_payload_t::KD3_HAS_PAYLOAD
 };
 
-using Tree = kd3::KdTree<kd3::limits<KD3_BASE_TYPE, KD3_DIMENSIONS, KD3_DISTANCE_TYPE>, cfg>;
+using Tree = kd3::KdTree<kd3::limits<KD3_BASE_TYPE, KD3_DIMENSIONS, KD3_DISTANCE_TYPE, KD3_PAYLOAD_TYPE>, cfg>;
 
 namespace {
     /**
@@ -384,7 +389,7 @@ KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
 #undef KD3_BASE_TYPE
 #undef KD3_DISTANCE_TYPE
 #undef KD3_LEAF_SIZE
-#undef KD3_HAS_INDEX
+#undef KD3_HAS_PAYLOAD
 #undef KD3_THRES_THREAD
 #undef KD3_MAX_STACK_DEPTH
 #undef KD3_DIMENSIONS

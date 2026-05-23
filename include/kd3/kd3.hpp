@@ -102,7 +102,7 @@ private:
                     for (size_t d = 0; d < Limits::D; ++d) {
                         buckets[bucket_idx].coords[d][i] = temp_pts[start + i].coords[d];
                     }
-                    if constexpr (cfg.has_index) buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
+                    if constexpr (cfg.has_payload==cfg_t::has_payload_t::INDEX) buckets[bucket_idx].ids[i] = temp_pts[start + i].payload_id;
                 }
                 
                 // Fill the remainder with pseudo-infinity points
@@ -110,7 +110,7 @@ private:
                     for (size_t d = 0; d < Limits::D; ++d) {
                         buckets[bucket_idx].coords[d][i] = Limits::INF; // Extremely far away
                     }
-                    if constexpr (cfg.has_index) buckets[bucket_idx].ids[i] = static_cast<uint32_t>(-1);
+                    if constexpr (cfg.has_payload==cfg_t::has_payload_t::INDEX) buckets[bucket_idx].ids[i] = Limits::INF_IDX;
                 }
                 
                 return;

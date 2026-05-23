@@ -25,10 +25,11 @@ using std::sort;
 using std::nth_element;
 using default_scalar_t = float;
 
-template<typename Scalar, size_t Dims = 3, typename Distance=float>
+template<typename Scalar, size_t Dims = 3, typename Distance=float, typename Payload=uint32_t>
 struct limits{
     using scalar_t = Scalar;
     using distance_t = Distance;
+    using payload_t = Payload;
     static constexpr size_t D = Dims;
     using point_t = std::array<scalar_t, D>;
 
@@ -50,12 +51,17 @@ struct limits{
         else return std::numeric_limits<T>::max() / 2; // Generic fallback
     }
 
+    template<typename T>
+    constexpr static T INF_IDX_v(){
+        return std::numeric_limits<T>::max();
+    }
+    
     /**
     * @brief D-dimensional point structure used for building the tree.
     */
     struct FatPoint {
         point_t coords;
-        uint32_t payload_id;
+        payload_t payload_id;
     };
 
     /**
@@ -64,7 +70,7 @@ struct limits{
     */
     struct RayHit {
         distance_t t;
-        uint32_t payload_id;
+        payload_t payload_id;
     };
 
     /**
@@ -72,12 +78,13 @@ struct limits{
     */
     struct KnnResult {
         distance_t dist_sq;
-        uint32_t payload_id;
+        payload_t payload_id;
         bool operator<(const KnnResult& o) const { return dist_sq < o.dist_sq; }
     };
 
     constexpr static scalar_t INF = INF_v<scalar_t>();
     constexpr static distance_t INF2 = INF2_v<distance_t>();
+    constexpr static payload_t INF_IDX = INF_IDX_v<payload_t>();
 };
 
 struct cfg_t{
@@ -104,7 +111,7 @@ struct cfg_t{
     size_t max_stack_depth = 48*2;
     size_t thres_thread = 10'000;
     size_t leaf_size = simd_parallelism*4;
-    bool   has_index = true;
+    enum has_payload_t{NONE, INDEX, OTHER} has_payload= has_payload_t::INDEX;
 };
 
 // ---------------------------------------------------------
@@ -125,6 +132,7 @@ class KdTreeView {
 public:
     using scalar_t = Limits::scalar_t;
     using distance_t = Limits::distance_t;
+    using payload_t = Limits::payload_t;
     using point_t = Limits::point_t;
     using RayHit = Limits::RayHit;
     using FatPoint = Limits::FatPoint;
@@ -147,7 +155,7 @@ public:
     */
     struct LeafBucket {
         alignas(std::min<size_t>(64, cfg.simd_parallelism*8)) scalar_t coords[Limits::D][cfg.leaf_size];
-        uint32_t ids[cfg.has_index?cfg.leaf_size:0];
+        payload_t ids[cfg.has_payload!=cfg_t::has_payload_t::NONE?cfg.leaf_size:0];
     };
 
     /**
@@ -208,7 +216,7 @@ public:
     }
 
     KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
-        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
         if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -217,7 +225,7 @@ public:
         size_t stack_sz = 0;
         
         scalar_t best_t = max_t;
-        uint32_t best_id = static_cast<uint32_t>(-1);
+        payload_t best_id = Limits::INF_IDX;
         bool hit = false;
         
         point_t inv_rd;
@@ -332,7 +340,7 @@ public:
         }
         
         // Filter out dummy padding points safely
-        if (hit && best_id != static_cast<uint32_t>(-1)) {
+        if (hit && best_id != Limits::INF_IDX) {
             return RayHit{best_t, best_id};
         }
         
@@ -484,11 +492,11 @@ public:
     }
 
     KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
-        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
-        uint32_t best_id = 0;
+        payload_t best_id = {};
 
         struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
         SearchNode stack[cfg.max_stack_depth]; 
@@ -560,7 +568,7 @@ public:
     }
 
     KD3_INLINE std::expected<std::span<KnnResult>, error_t> query_knn_inline(const point_t target, std::span<KnnResult> buffer) const noexcept {
-        if constexpr (!cfg.has_index) return std::unexpected{error_t::NotSupported};
+        if constexpr (cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         const size_t k = buffer.size();
@@ -568,7 +576,7 @@ public:
         
         size_t heap_size = 0;
 
-        auto push_heap = [&](distance_t dist, uint32_t id) {
+        auto push_heap = [&](distance_t dist, payload_t id) {
             if (heap_size < k) {
                 buffer[heap_size] = {dist, id};
                 heap_size++;
