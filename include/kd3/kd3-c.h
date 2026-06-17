@@ -55,7 +55,7 @@ extern "C" {
 #endif
 
 #ifndef KD3_LEAF_SIZE
-#   define KD3_LEAF_SIZE 32 //TODO: actually it shoul depend on KD3_SIMD_PARALLELISM
+#   define KD3_LEAF_SIZE 32 //TODO: actually it should depend on KD3_SIMD_PARALLELISM
 #endif
 
 #ifndef KD3_HAS_PAYLOAD

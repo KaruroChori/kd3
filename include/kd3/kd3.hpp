@@ -223,7 +223,7 @@ public:
         std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
         std::vector<LeafBucket> buckets(B);
 
-        Builder<true> builder{temp_pts, vals, dims, buckets, B};
+        Builder<true> builder{{const_cast<FatPoint*>(temp_pts.data()), temp_pts.size()}, vals, dims, buckets, B};
 
         #pragma omp parallel
         {

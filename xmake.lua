@@ -1,7 +1,7 @@
 add_requires("openmp")
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
-set_languages("cxx26","c23")
+set_languages("cxx23","c23")
 
 target("kd3")
     set_kind("static")
@@ -84,7 +84,6 @@ if has_config("with_demo") then
 
 target("nanoflann")
     set_kind("binary")
-    set_languages("cxx23")
     add_files("./examples/nanoflann.cpp")
     add_deps("kd3")
     add_packages("nanoflann")
@@ -98,7 +97,6 @@ target("nanoflann")
 
 target("render.raymarch")
     set_kind("binary")
-    set_languages("cxx23")
     add_files("./examples/render.raymarch.cpp")
     add_deps("kd3")
     add_packages("raylib")
@@ -111,7 +109,6 @@ target("render.raymarch")
 
 target("render.raytrace")
     set_kind("binary")
-    set_languages("cxx23")
     add_files("./examples/render.raytrace.cpp")
     add_deps("kd3")
     add_packages("raylib")
