@@ -2,7 +2,7 @@
 
 ```sh
 xmake f --with_demo=true
-xmake run nanoflann
+xmake run benchmarks.nanoflann
 ```
 
 Example output on my 5950x:
@@ -26,8 +26,8 @@ kd3 matches brute force:         YES
 nanoflann matches brute force:   YES
 ```
 
-Regardless of the specifics for my test-bench, on all machines I tried this one, more or less regardless of parameters, I always measured `kd3` has ~2 times the throughput of `nanoflann`.  
-Furthermore, our tree construction is parallelized; still, even disabling OpenMP support, `kd3` is still faster.  
+Regardless of the specifics for my test-bench, on all machines I tried this one, more or less regardless of parameters, I always measured `kd3` has ~2.2 times the throughput of `nanoflann`.  
+Furthermore, our tree construction is parallelized; still, even disabling OpenMP support, `kd3` would be faster.  
 
 Clearly `nanoflann` is more flexibile in several ways; but if you don't need that flexibility, `kd3` provides a meaningful improvement.  
 

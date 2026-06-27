@@ -19,7 +19,7 @@ target("kd3")
 
 target("benchmarks")
     set_kind("binary")
-    add_files("examples/benchmarks.cpp")
+    add_files("benchmarks/benchmarks.cpp")
     add_includedirs("include", {public=true})    
     add_packages("openmp")
     if is_mode("release") then
@@ -31,7 +31,7 @@ target("benchmarks")
 
 target("benchmarks.fast")
     set_kind("binary")
-    add_files("examples/benchmarks.fast.cpp")
+    add_files("benchmarks/benchmarks.fast.cpp")
     add_includedirs("include", {public=true})    
     add_packages("openmp")
     if is_mode("release") then
@@ -56,7 +56,7 @@ target("c-interface")
 
 target("plot")
     set_kind("binary")
-    add_files("examples/plot.cpp")
+    add_files("benchmarks/plot.cpp")
     add_includedirs("include", {public=true})    
     add_packages("openmp")
     if is_mode("release") then
@@ -82,9 +82,9 @@ end
 
 if has_config("with_demo") then
 
-target("nanoflann")
+target("benchmarks.nanoflann")
     set_kind("binary")
-    add_files("./examples/nanoflann.cpp")
+    add_files("./benchmarks/benchmarks.nanoflann.cpp")
     add_deps("kd3")
     add_packages("nanoflann")
     add_packages("openmp")
