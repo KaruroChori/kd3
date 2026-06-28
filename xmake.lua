@@ -66,6 +66,16 @@ target("plot")
     end
     set_default(false)
 
+target("glslgen")
+    set_kind("binary")
+    add_files("tools/glslgen.cpp")
+    add_includedirs("include", {public=true})
+    if is_mode("release") then
+        set_optimize("fastest")
+        add_cxflags("-ffast-math", "-march=native")
+    end
+    set_default(false)
+
 -- Option that allows to build the UI demos, disabled by default to avoid unwanted extra dependencies
 option("with_demo")
     set_default(false)

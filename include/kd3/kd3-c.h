@@ -115,6 +115,23 @@ typedef struct{
 } KD3$(ray_hit_t);
 
 /**
+ * @brief Configuration for runtime GLSL shader generation.
+ * Fields match kd3::GlslConfigDyn; see glsl.hpp for details.
+ */
+typedef struct {
+    const char        *prefix;
+    uint32_t           binding_vals;
+    uint32_t           binding_dims;
+    uint32_t           binding_bks;
+    uint32_t           max_k;
+    uint32_t           D;
+    uint32_t           leaf_size;
+    int32_t            has_payload;  /* 0=NONE, 1=INDEX, 2=OTHER */
+    uint32_t           max_stack_depth;
+    uint32_t           simd_parallelism;
+} KD3$(glsl_config_t);
+
+/**
  * @brief Opaque handle to a built kd-tree
  */
 typedef struct KD3$(tree_t) KD3$(tree_t);
@@ -218,6 +235,27 @@ KD3$(error_t) KD3$(tree_query_ray_distance)(const KD3$(tree_t) *tree,
                                             KD3$(scalar_t) radius,
                                             KD3$(distance_t) *out);
 
+/**
+ * @brief Return a default glsl_config_t populated from the
+ * compile-time KD3_* macros (D, leaf_size, has_payload, etc.).
+ */
+KD3$(glsl_config_t) KD3$(glsl_default_config)(void);
+
+/**
+ * @brief Generate a GLSL shader string for the given configuration.
+ *
+ * @param config Pointer to a populated glsl_config_t.
+ * @return Heap-allocated null-terminated string (must be freed with kd3_free_string).
+ */
+char *KD3$(glsl_generate_string)(const KD3$(glsl_config_t) *config);
+
+/**
+ * @brief Free a string returned by kd3_glsl_generate_string.
+ *
+ * @param str Pointer returned by kd3_glsl_generate_string.
+ */
+void KD3$(free_string)(char *str);
+
 
 #ifdef __cplusplus
 }
@@ -225,6 +263,8 @@ KD3$(error_t) KD3$(tree_query_ray_distance)(const KD3$(tree_t) *tree,
 
 #ifdef KD3_CXX_IMPL
 #include <kd3/kd3.hpp>
+#include <kd3/glsl.hpp>
+#include <cstring>
 #include <memory>
 
 constexpr kd3::cfg_t cfg{
@@ -375,6 +415,47 @@ KD3$(error_t) KD3$(tree_query_knn)(const KD3$(tree_t) *tree,
     }
     *k = ret.value().size();
     return KD3$(Ok);
+}
+
+KD3$(glsl_config_t) KD3$(glsl_default_config)(void) {
+    KD3$(glsl_config_t) cfg;
+    cfg.prefix           = "kd3";
+    cfg.binding_vals     = 0;
+    cfg.binding_dims     = 1;
+    cfg.binding_bks      = 2;
+    cfg.max_k            = 8;
+    cfg.D                = KD3_DIMENSIONS;
+    cfg.leaf_size        = KD3_LEAF_SIZE;
+    cfg.has_payload      = static_cast<int32_t>(kd3::cfg_t::has_payload_t::KD3_HAS_PAYLOAD);
+    cfg.max_stack_depth  = KD3_MAX_STACK_DEPTH;
+    cfg.simd_parallelism = kd3::cfg_t::simd_parallelism;
+    return cfg;
+}
+
+char *KD3$(glsl_generate_string)(const KD3$(glsl_config_t) *config) {
+    if (!config) return nullptr;
+
+    kd3::GlslConfigDyn dyn;
+    dyn.prefix           = config->prefix ? config->prefix : "kd3";
+    dyn.binding_vals     = config->binding_vals;
+    dyn.binding_dims     = config->binding_dims;
+    dyn.binding_bks      = config->binding_bks;
+    dyn.max_k            = config->max_k;
+    dyn.D                = config->D;
+    dyn.leaf_size        = config->leaf_size;
+    dyn.has_payload      = static_cast<kd3::cfg_t::has_payload_t>(config->has_payload);
+    dyn.max_stack_depth  = config->max_stack_depth;
+    dyn.simd_parallelism = config->simd_parallelism;
+
+    std::string result = kd3::generate_glsl_dyn(dyn);
+    char *buf = new char[result.size() + 1];
+    std::memcpy(buf, result.data(), result.size());
+    buf[result.size()] = '\0';
+    return buf;
+}
+
+void KD3$(free_string)(char *str) {
+    delete[] str;
 }
 
 #undef KD3_CXX_IMPL
