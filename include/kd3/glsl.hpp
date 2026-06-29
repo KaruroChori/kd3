@@ -245,7 +245,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
     auto gen_knn_logic = [&](bool with_index, bool multi) {
         if (with_index) {
             if (multi) {
-                oss << "uint " << P << "_query_knn(" << vec_type << " target, uint k, out " << P_Title << "KnnResult results[" << glsl_cfg.max_k << "]) {\n";
+                oss << "uint " << P << "_query_knn(" << vec_type << " target, uint k, out " << P_Title << "KnnResult out_results[" << glsl_cfg.max_k << "]) {\n";
             } else {
                 oss << "bool " << P << "_query_1nn(" << vec_type << " target, out " << P_Title << "KnnResult result) {\n";
             }
@@ -277,7 +277,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "        float node_min_dist = stack_dist[stack_sz];\n\n";
 
         if (multi) {
-            oss << "        if (count == k && node_min_dist >= results[k - 1u].dist_sq) continue;\n\n";
+            oss << "        if (count == k && node_min_dist >= out_results[k - 1u].dist_sq) continue;\n\n";
         } else {
             oss << "        if (node_min_dist >= min_dist_sq) continue;\n\n";
         }
@@ -298,15 +298,15 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "                float dist_sq = dot(diff, diff);\n";
 
         if (multi) {
-            oss << "                if (count < k || dist_sq < results[k - 1u].dist_sq) {\n";
+            oss << "                if (count < k || dist_sq < out_results[k - 1u].dist_sq) {\n";
             oss << "                    uint pos = count;\n";
             oss << "                    if (pos == k) pos = k - 1u;\n";
             oss << "                    else count++;\n";
-            oss << "                    while (pos > 0u && results[pos - 1u].dist_sq > dist_sq) {\n";
-            oss << "                        results[pos] = results[pos - 1u];\n";
+            oss << "                    while (pos > 0u && out_results[pos - 1u].dist_sq > dist_sq) {\n";
+            oss << "                        out_results[pos] = out_results[pos - 1u];\n";
             oss << "                        pos--;\n";
             oss << "                    }\n";
-            oss << "                    results[pos] = " << P_Title << "KnnResult(dist_sq, " << P << "_buckets[id_base + i]);\n";
+            oss << "                    out_results[pos] = " << P_Title << "KnnResult(dist_sq, " << P << "_buckets[id_base + i]);\n";
             oss << "                }\n";
         } else {
             oss << "                if (dist_sq < min_dist_sq) {\n";
@@ -329,7 +329,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "        uint second = (axis_dist < 0.0) ? right : left;\n\n";
 
         if (multi) {
-            oss << "        if (count < k || axis_dist_sq < results[k - 1u].dist_sq) {\n";
+            oss << "        if (count < k || axis_dist_sq < out_results[k - 1u].dist_sq) {\n";
         } else {
             oss << "        if (axis_dist_sq < min_dist_sq) {\n";
         }
@@ -340,7 +340,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
 
         if (multi) {
             oss << "    uint valid_results = 0u;\n";
-            oss << "    for (uint i = 0u; i < count; ++i) if (results[i].dist_sq < 1e29) valid_results++;\n";
+            oss << "    for (uint i = 0u; i < count; ++i) if (out_results[i].dist_sq < 1e29) valid_results++;\n";
             oss << "    return valid_results;\n";
             oss << "}\n\n";
         } else {
