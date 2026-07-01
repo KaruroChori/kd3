@@ -9,7 +9,7 @@ It is not the most complete nor the most flexible, but it is what it needs to be
 - **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading, embedded computing and storage via memory mapped files.
 - **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
 - **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. This functionality is distributed as a standalone header, so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
-- **C-API Available:** a C interface wrapper is provided for FFI integration.
+- **C-API Available:** a C interface wrapper is provided for FFI integration, in the form of an STB-like library.
 - **Shader implementation:** a GLSL generator[^4] for code matching the query functions, allowing rendering on the GPU without OpenMP device offloading without recomputing the trees.
 
 ## Quick Start (C++)

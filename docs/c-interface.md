@@ -1,5 +1,5 @@
 `kd3` ships its C interface as a C++ stb-style library.  
-You are either just link with the default implementation which is automatically built as part of this xmake project, or quickly integrate it within your own.  
+You are either link the default implementation which is automatically built as part of this xmake project, or quickly integrate it within your own.  
 [kd3-c.cpp](../lib/kd3/kd3-c.cpp) offers an example of how this is done:
 
 ```c++
