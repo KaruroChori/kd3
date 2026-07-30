@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: validate tag matches version.h
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          HEADER_VERSION=$(grep -oP 'KD3_VERSION_STRING\s+"\K[^"]+' include/kd3/version.h)
+          if [ "$TAG_VERSION" != "$HEADER_VERSION" ]; then
+            echo "error: tag v${TAG_VERSION} does not match version.h (${HEADER_VERSION})"
+            exit 1
+          fi
+          echo "version.h matches tag v${TAG_VERSION}"
+
+      - name: install xmake
+        run: curl -fsSL https://xmake.io/shget.text | bash
+
+      - name: build
+        run: |
+          export KD3_VERSION="${{ steps.version.outputs.version }}"
+          xmake f -m release -y
+          xmake -y kd3
+          xmake -y kd3-glslgen
+
+      - name: source tarball
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          mkdir -p artifacts
+          tar -czf "artifacts/kd3-${V}-src.tar.gz" \
+            include/kd3/ \
+            LICENCE.txt \
+            README.md
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: false

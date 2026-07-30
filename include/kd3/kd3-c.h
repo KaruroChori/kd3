@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "version.h"
 
 #define KD3$_1(ns, x) ns ## _ ## x
 #define KD3$_2(ns, x) KD3$_1(ns,x)

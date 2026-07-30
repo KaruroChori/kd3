@@ -1,3 +1,8 @@
+local version = os.getenv("KD3_VERSION") or "1.0.1"
+local major, minor, patch = version:match("^(%d+)%.?(%d*)%.?(%d*)")
+set_version(version)
+set_license("AGPL-3.0-only")
+
 add_requires("openmp")
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
@@ -16,6 +21,17 @@ target("kd3")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
         add_cxflags("-ffast-math", "-march=native")
     end
+    before_build(function (target)
+        local ver = version
+        local ma, mi, pa = ver:match("^(%d+)%.?(%d*)%.?(%d*)")
+        local f = io.open(path.join(os.projectdir(), "include/kd3/version.h"), "w")
+        f:write("#pragma once\n\n")
+        f:write("#define KD3_VERSION_MAJOR " .. (ma or "0") .. "\n")
+        f:write("#define KD3_VERSION_MINOR " .. (mi or "0") .. "\n")
+        f:write("#define KD3_VERSION_PATCH " .. (pa or "0") .. "\n")
+        f:write("#define KD3_VERSION_STRING \"" .. ver .. "\"\n")
+        f:close()
+    end)
 
 target("benchmarks")
     set_kind("binary")
@@ -66,7 +82,7 @@ target("plot")
     end
     set_default(false)
 
-target("glslgen")
+target("kd3-glslgen")
     set_kind("binary")
     add_files("tools/glslgen.cpp")
     add_includedirs("include", {public=true})

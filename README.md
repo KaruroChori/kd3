@@ -184,7 +184,11 @@ check for the index in your build folder.
 
 ## Usage
 
-If you plan on using it via xmake, you can use [package.lua](./package.lua) as reference for the package file.
+If you plan on using it via xmake, you can use [package.lua](./package.lua) as reference for the package file.  
+You will also find the header only library artifacts for releases on the project page.  
+
+There is no good reason for us to build and distribute binary releases of this library; it leverages `march=native` to deliver its best performance, so you are expected to build it for your own target system.  
+
 
 ## Licence
 
