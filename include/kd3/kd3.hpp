@@ -16,7 +16,6 @@
 #include <cstdint>
 
 #include "query.hpp"
-#include "version.h"
 
 namespace kd3 {
 

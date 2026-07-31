@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <array>
 #include <bit>
+#include "version.h"
 
 //TODO: change a bit to make it more compatible with other compilers as well.
 #define KD3_INLINE inline __attribute__((always_inline))
