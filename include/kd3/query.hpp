@@ -162,7 +162,7 @@ public:
     /**
     * @brief Error codes for KdTree operations.
     */
-    enum struct error_t { Ok, EmptyInput, EmptyContainer, NotSupported, NotImplemented, NotFound };
+    enum struct error_t { Ok, EmptyInput, EmptyContainer, NotSupported, NotImplemented, NotFound, InsufficientStorage };
 
     std::span<const scalar_t> split_vals;
     std::span<const uint64_t> split_dims;
