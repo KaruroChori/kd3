@@ -1,3 +1,6 @@
+// Micro-benchmark for the payload-free configuration (has_payload = NONE,
+// distance-only queries) across scalar types. Kept separate from
+// benchmarks.comparative, which covers payload-bearing k-NN workloads.
 #include <kd3/kd3.hpp>
 #include <vector>
 #include <expected>

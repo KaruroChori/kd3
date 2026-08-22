@@ -28,6 +28,8 @@ static void print_usage(const char *prog) {
         "  --binding-vals N     SSBO binding for split values (default: 0)\n"
         "  --binding-dims N     SSBO binding for split dimensions (default: 1)\n"
         "  --binding-bks N      SSBO binding for buckets (default: 2)\n"
+        "  --aabb               Emit subtree-box pruning (requires boxes buffer)\n"
+        "  --binding-boxes N    SSBO binding for subtree boxes (default: 3)\n"
         "  --max-k N            Max k for kNN queries (default: 8)\n"
         "  -o, --output PATH    Write to file instead of stdout\n"
         "  -h, --help           Print this help\n",
@@ -115,6 +117,12 @@ int main(int argc, char **argv) {
             unsigned long v;
             if (!parse_u32(next(), &v)) { std::fprintf(stderr, "Invalid binding-bks\n"); return 1; }
             cfg.binding_bks = static_cast<uint32_t>(v);
+        } else if (streq(arg, "--binding-boxes")) {
+            unsigned long v;
+            if (!parse_u32(next(), &v)) { std::fprintf(stderr, "Invalid binding-boxes\n"); return 1; }
+            cfg.binding_boxes = static_cast<uint32_t>(v);
+        } else if (streq(arg, "--aabb")) {
+            cfg.has_aabb = true;
         } else if (streq(arg, "--max-k")) {
             unsigned long v;
             if (!parse_u32(next(), &v) || v == 0) { std::fprintf(stderr, "Invalid max-k\n"); return 1; }

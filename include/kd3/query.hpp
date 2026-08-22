@@ -113,6 +113,9 @@ struct cfg_t{
     size_t thres_thread = 10'000;
     size_t leaf_size = simd_parallelism*4;
     enum has_payload_t{NONE, INDEX, OTHER} has_payload= has_payload_t::INDEX;
+    /// Store a tight AABB per subtree at build time, so far-from-data queries can
+    /// discard whole subtrees with one point-to-box test instead of plane tests only.
+    bool has_aabb = false;
 };
 
 // ---------------------------------------------------------
@@ -160,6 +163,14 @@ public:
     };
 
     /**
+    * @brief Tight axis-aligned bounding box of one subtree, indexed by node index.
+    */
+    struct NodeBox {
+        point_t minc;
+        point_t maxc;
+    };
+
+    /**
     * @brief Error codes for KdTree operations.
     */
     enum struct error_t { Ok, EmptyInput, EmptyContainer, NotSupported, NotImplemented, NotFound, InsufficientStorage };
@@ -169,6 +180,7 @@ public:
     std::span<const LeafBucket> buckets;
     point_t min_root;
     point_t max_root;
+    std::span<const NodeBox> node_boxes;
 
     /**
      * @brief Default constructor creating an empty view.
@@ -177,19 +189,72 @@ public:
 
     /**
      * @brief Construct a view from existing data arrays.
-     * 
+     *
      * @param vals Span of split values.
      * @param dims Span of split dimensions (packed).
      * @param bks Span of leaf buckets.
      * @param min_root Root BBOX min point
      * @param max_root Root BBOX max point
+     * @param boxes Optional per-subtree AABBs (2B-1 entries, indexed by node index).
      */
-    KdTreeView(std::span<const scalar_t> vals, 
-               std::span<const uint64_t> dims, 
+    KdTreeView(std::span<const scalar_t> vals,
+               std::span<const uint64_t> dims,
                std::span<const LeafBucket> bks,
                point_t min_root,
-               point_t max_root
-    ) : split_vals(vals), split_dims(dims), buckets(bks), min_root(min_root), max_root(max_root) {}
+               point_t max_root,
+               std::span<const NodeBox> boxes = {}
+    ) : split_vals(vals), split_dims(dims), buckets(bks), min_root(min_root), max_root(max_root),
+        node_boxes(boxes) {}
+
+    /**
+     * @brief Squared distance between a target point and the tight box of a subtree.
+     *
+     * A valid lower bound for the distance to any point stored in that subtree.
+     */
+    KD3_INLINE distance_t node_dist_sq(size_t node_idx, const point_t target) const noexcept {
+        const NodeBox& b = node_boxes[node_idx];
+        distance_t total = {};
+        for (size_t d = 0; d < Limits::D; ++d) {
+            const scalar_t v = target[d];
+            const scalar_t diff =
+                v < b.minc[d] ? static_cast<scalar_t>(b.minc[d] - v)
+                              : (v > b.maxc[d] ? static_cast<scalar_t>(v - b.maxc[d]) : scalar_t{});
+            total += static_cast<distance_t>(diff) * static_cast<distance_t>(diff);
+        }
+        return total;
+    }
+
+    /**
+     * @brief Ray-vs-subtree-box slab test; clamps the [t_in_min,t_in_max] interval.
+     *
+     * The box is conservatively thickened by @p radius (Minkowski per axis), so
+     * points within that distance of the ray line are never pruned.
+     *
+     * @return true if the interval survives the intersection; outputs entry/exit.
+     */
+    KD3_INLINE bool node_slab(size_t node_idx, const point_t& ro, const point_t& rd,
+                              scalar_t radius, scalar_t t_in_min, scalar_t t_in_max,
+                              scalar_t& out_enter, scalar_t& out_exit) const noexcept {
+        const NodeBox& b = node_boxes[node_idx];
+        scalar_t enter = t_in_min;
+        scalar_t exit  = t_in_max;
+        for (size_t d = 0; d < Limits::D; ++d) {
+            if (rd[d] == scalar_t{}) {
+                if (ro[d] < b.minc[d] - radius || ro[d] > b.maxc[d] + radius) return false;
+            } else {
+                const scalar_t inv = scalar_t{1} / rd[d];
+                scalar_t ta = (b.minc[d] - radius - ro[d]) * inv;
+                scalar_t tb = (b.maxc[d] + radius - ro[d]) * inv;
+                if (ta > tb) { const scalar_t tmp = ta; ta = tb; tb = tmp; }
+                enter = std::max(enter, ta);
+                exit  = std::min(exit, tb);
+                if (enter > exit) return false;
+            }
+        }
+        out_enter = enter;
+        out_exit  = exit;
+        return true;
+    }
 
     /**
      * @brief Retrieves the split dimension for a given node index.
@@ -255,6 +320,8 @@ public:
         scalar_t eps = radius_sq > 0.0f ? 0.0f : 1e-5f;
 
         const size_t LEAF_THRESHOLD = buckets.size() - 1;
+        bool tight = false;
+        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
 
         while (stack_sz > 0) {
             auto [curr, t_min, node_t_max] = stack[--stack_sz];
@@ -293,11 +360,34 @@ public:
                 continue;
             }
             
+            const size_t left_child = 2 * curr + 1;
+            const size_t right_child = 2 * curr + 2;
+
+            if (tight) {
+                scalar_t l_enter = t_min, l_exit = node_t_max;
+                scalar_t r_enter = t_min, r_exit = node_t_max;
+                const bool hl = node_slab(left_child, ro, rd, radius, t_min, node_t_max, l_enter, l_exit);
+                const bool hr = node_slab(right_child, ro, rd, radius, t_min, node_t_max, r_enter, r_exit);
+                const bool vl = hl && l_enter < best_t;
+                const bool vr = hr && r_enter < best_t;
+                if (vl && vr) {
+                    if (l_enter <= r_enter) {
+                        stack[stack_sz++] = {right_child, r_enter, r_exit};
+                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                    } else {
+                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                        stack[stack_sz++] = {right_child, r_enter, r_exit};
+                    }
+                } else if (vl) {
+                    stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                } else if (vr) {
+                    stack[stack_sz++] = {right_child, r_enter, r_exit};
+                }
+                continue;
+            }
+
             uint8_t dim = get_dim(curr);
             scalar_t split = split_vals[curr];
-            
-            size_t left_child = 2 * curr + 1;
-            size_t right_child = 2 * curr + 2;
             
             // Handle ray traveling exactly parallel to the partition plane
             if (rd[dim] == 0.0f) {
@@ -398,6 +488,8 @@ public:
         scalar_t eps = radius_sq > 0.0f ? 0.0f : 1e-5f;
 
         const size_t LEAF_THRESHOLD = buckets.size() - 1;
+        bool tight = false;
+        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
 
         while (stack_sz > 0) {
             auto [curr, t_min, node_t_max] = stack[--stack_sz];
@@ -432,11 +524,34 @@ public:
                 continue;
             }
             
+            const size_t left_child = 2 * curr + 1;
+            const size_t right_child = 2 * curr + 2;
+
+            if (tight) {
+                scalar_t l_enter = t_min, l_exit = node_t_max;
+                scalar_t r_enter = t_min, r_exit = node_t_max;
+                const bool hl = node_slab(left_child, ro, rd, radius, t_min, node_t_max, l_enter, l_exit);
+                const bool hr = node_slab(right_child, ro, rd, radius, t_min, node_t_max, r_enter, r_exit);
+                const bool vl = hl && l_enter < best_t;
+                const bool vr = hr && r_enter < best_t;
+                if (vl && vr) {
+                    if (l_enter <= r_enter) {
+                        stack[stack_sz++] = {right_child, r_enter, r_exit};
+                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                    } else {
+                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                        stack[stack_sz++] = {right_child, r_enter, r_exit};
+                    }
+                } else if (vl) {
+                    stack[stack_sz++] = {left_child,  l_enter,  l_exit };
+                } else if (vr) {
+                    stack[stack_sz++] = {right_child, r_enter, r_exit};
+                }
+                continue;
+            }
+
             uint8_t dim = get_dim(curr);
             scalar_t split = split_vals[curr];
-            
-            size_t left_child = 2 * curr + 1;
-            size_t right_child = 2 * curr + 2;
             
             if (rd[dim] == 0.0f) {
                 scalar_t dist_to_split = split - ro[dim];
@@ -500,12 +615,14 @@ public:
         payload_t best_id = {};
 
         struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
-        SearchNode stack[cfg.max_stack_depth]; 
+        SearchNode stack[cfg.max_stack_depth];
         size_t stack_sz = 0;
-        
+
         stack[stack_sz++] = {0, scalar_t{}};
 
         const size_t LEAF_THRESHOLD = buckets.size() - 1;
+        bool tight = false;
+        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
 
         while (stack_sz > 0) {
             auto [curr, node_min_dist_sq] = stack[--stack_sz];
@@ -533,22 +650,33 @@ public:
                 continue;
             }
 
-            uint8_t dim = get_dim(curr);
-            scalar_t split = split_vals[curr];
+            const size_t left = 2 * curr + 1;
+            const size_t right = 2 * curr + 2;
 
-            distance_t axis_dist = target[dim] - split;
-            distance_t axis_dist_sq = axis_dist * axis_dist;
-            
-            size_t left = 2 * curr + 1;
-            size_t right = 2 * curr + 2;
+            if (tight && min_dist_sq < Limits::INF2) {
+                const distance_t dl = node_dist_sq(left, target);
+                const distance_t dr = node_dist_sq(right, target);
+                const size_t f = dl <= dr ? left : right;
+                const size_t s = dl <= dr ? right : left;
+                const distance_t df = dl <= dr ? dl : dr;
+                const distance_t ds = dl <= dr ? dr : dl;
+                if (ds < min_dist_sq) stack[stack_sz++] = {s, ds};
+                if (df < min_dist_sq) stack[stack_sz++] = {f, df};
+            } else {
+                uint8_t dim = get_dim(curr);
+                scalar_t split = split_vals[curr];
 
-            size_t first = (axis_dist < scalar_t{}) ? left : right;
-            size_t second = (axis_dist < scalar_t{}) ? right : left;
+                distance_t axis_dist = target[dim] - split;
+                distance_t axis_dist_sq = axis_dist * axis_dist;
 
-            if (axis_dist_sq < min_dist_sq) {
-                stack[stack_sz++] = {second, axis_dist_sq};
+                size_t first = (axis_dist < scalar_t{}) ? left : right;
+                size_t second = (axis_dist < scalar_t{}) ? right : left;
+
+                if (axis_dist_sq < min_dist_sq) {
+                    stack[stack_sz++] = {second, axis_dist_sq};
+                }
+                stack[stack_sz++] = {first, distance_t{}};
             }
-            stack[stack_sz++] = {first, distance_t{}};
         }
 
         if (min_dist_sq >= Limits::INF2) [[unlikely]] return std::unexpected{error_t::NotFound};
@@ -595,6 +723,8 @@ public:
         stack[stack_sz++] = {0, distance_t{}};
 
         const size_t LEAF_THRESHOLD = buckets.size() - 1;
+        bool tight = false;
+        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
 
         while (stack_sz > 0) {
             auto [curr, node_min_dist] = stack[--stack_sz];
@@ -619,22 +749,34 @@ public:
                 continue;
             }
 
-            uint8_t dim = get_dim(curr);
-            scalar_t split = split_vals[curr];
+            const size_t left = 2 * curr + 1;
+            const size_t right = 2 * curr + 2;
+            const distance_t bound = heap_size < k ? Limits::INF2 : buffer.front().dist_sq;
 
-            distance_t axis_dist = target[dim] - split;
-            distance_t axis_dist_sq = axis_dist * axis_dist;
-            
-            size_t left = 2 * curr + 1;
-            size_t right = 2 * curr + 2;
+            if (tight && bound < Limits::INF2) {
+                const distance_t dl = node_dist_sq(left, target);
+                const distance_t dr = node_dist_sq(right, target);
+                const size_t   f = dl <= dr ? left : right;
+                const size_t   s = dl <= dr ? right : left;
+                const distance_t df = dl <= dr ? dl : dr;
+                const distance_t ds = dl <= dr ? dr : dl;
+                if (ds < bound) stack[stack_sz++] = {s, ds};
+                if (df < bound) stack[stack_sz++] = {f, df};
+            } else {
+                uint8_t dim = get_dim(curr);
+                scalar_t split = split_vals[curr];
 
-            size_t first = (axis_dist < distance_t{}) ? left : right;
-            size_t second = (axis_dist < distance_t{}) ? right : left;
+                distance_t axis_dist = target[dim] - split;
+                distance_t axis_dist_sq = axis_dist * axis_dist;
 
-            if (heap_size < k || axis_dist_sq < buffer.front().dist_sq) {
-                stack[stack_sz++] = {second, axis_dist_sq};
+                size_t first = (axis_dist < distance_t{}) ? left : right;
+                size_t second = (axis_dist < distance_t{}) ? right : left;
+
+                if (heap_size < k || axis_dist_sq < buffer.front().dist_sq) {
+                    stack[stack_sz++] = {second, axis_dist_sq};
+                }
+                stack[stack_sz++] = {first, distance_t{}};
             }
-            stack[stack_sz++] = {first, distance_t{}};
         }
 
         sort(buffer.begin(), buffer.begin() + heap_size);
@@ -675,6 +817,8 @@ public:
         stack[stack_sz++] = {0, scalar_t{}};
 
         const size_t LEAF_THRESHOLD = buckets.size() - 1;
+        bool tight = false;
+        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
 
         while (stack_sz > 0) {
             auto [curr, node_min_dist_sq] = stack[--stack_sz];
@@ -701,22 +845,33 @@ public:
                 continue;
             }
 
-            uint8_t dim = get_dim(curr);
-            scalar_t split = split_vals[curr];
+            const size_t left = 2 * curr + 1;
+            const size_t right = 2 * curr + 2;
 
-            distance_t axis_dist = target[dim] - split;
-            distance_t axis_dist_sq = axis_dist * axis_dist;
-            
-            size_t left = 2 * curr + 1;
-            size_t right = 2 * curr + 2;
+            if (tight && min_dist_sq < Limits::INF2) {
+                const distance_t dl = node_dist_sq(left, target);
+                const distance_t dr = node_dist_sq(right, target);
+                const size_t   f = dl <= dr ? left : right;
+                const size_t   s = dl <= dr ? right : left;
+                const distance_t df = dl <= dr ? dl : dr;
+                const distance_t ds = dl <= dr ? dr : dl;
+                if (ds < min_dist_sq) stack[stack_sz++] = {s, ds};
+                if (df < min_dist_sq) stack[stack_sz++] = {f, df};
+            } else {
+                uint8_t dim = get_dim(curr);
+                scalar_t split = split_vals[curr];
 
-            size_t first = (axis_dist < scalar_t{}) ? left : right;
-            size_t second = (axis_dist < scalar_t{}) ? right : left;
+                distance_t axis_dist = target[dim] - split;
+                distance_t axis_dist_sq = axis_dist * axis_dist;
 
-            if (axis_dist_sq < min_dist_sq) {
-                stack[stack_sz++] = {second, axis_dist_sq};
+                size_t first = (axis_dist < scalar_t{}) ? left : right;
+                size_t second = (axis_dist < scalar_t{}) ? right : left;
+
+                if (axis_dist_sq < min_dist_sq) {
+                    stack[stack_sz++] = {second, axis_dist_sq};
+                }
+                stack[stack_sz++] = {first, distance_t{}};
             }
-            stack[stack_sz++] = {first, distance_t{}};
         }
 
         // Filter out pseudo-infinity points in case tree only had dummy data (impossible from Builder) 

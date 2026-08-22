@@ -21,7 +21,7 @@
 #include <kd3/kd3.hpp>
 #include <kd3/glsl.hpp>
 
-using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32}>;
+using TreeType = kd3::KdTree<kd3::limits<float>,{.leaf_size=32, .has_aabb=true}>;
 
 // ---------------------------------------------------------
 // Core Math & Geometry
@@ -148,6 +148,7 @@ int main() {
         .binding_vals = 1,
         .binding_dims = 2,
         .binding_bks = 3,
+        .binding_boxes = 4,
         .max_stack_depth = 128
     };
 
@@ -261,6 +262,10 @@ void main() {
     unsigned int vals_ssbo   = rlLoadShaderBuffer(view.split_vals.size() * sizeof(float), (void*)view.split_vals.data(), RL_DYNAMIC_DRAW);
     unsigned int dims_ssbo   = rlLoadShaderBuffer(view.split_dims.size() * sizeof(uint64_t), (void*)view.split_dims.data(), RL_DYNAMIC_DRAW);
     unsigned int bks_ssbo    = rlLoadShaderBuffer(view.buckets.size() * sizeof(TreeType::LeafBucket), (void*)view.buckets.data(), RL_DYNAMIC_DRAW);
+    unsigned int boxes_ssbo  = 0;
+    if constexpr (TreeType::cfg.has_aabb) {
+        boxes_ssbo = rlLoadShaderBuffer(view.node_boxes.size() * sizeof(typename TreeType::NodeBox), (void*)view.node_boxes.data(), RL_DYNAMIC_DRAW);
+    }
 
     std::vector<Color> fb(W * H);
     Image img = { fb.data(), W, H, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
@@ -303,6 +308,7 @@ void main() {
             rlBindShaderBuffer(vals_ssbo, 1);
             rlBindShaderBuffer(dims_ssbo, 2);
             rlBindShaderBuffer(bks_ssbo, 3);
+            if constexpr (TreeType::cfg.has_aabb) rlBindShaderBuffer(boxes_ssbo, 4);
             
             DrawRectangle(0, 0, W, H, WHITE);
             EndShaderMode();

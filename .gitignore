@@ -3,3 +3,5 @@
 /.xmake
 /private
 /.cache
+/datasets
+/kd3_datasets_report.csv

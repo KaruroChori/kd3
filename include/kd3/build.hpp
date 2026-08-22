@@ -9,6 +9,7 @@
 //   buckets = B
 //   vals    = B - 1                     (internal split values)
 //   dims    = ceil((B-1) / dims_per_word)
+//   boxes   = 2*B - 1                   (per-subtree AABBs, only when cfg.has_aabb)
 
 #include <kd3/query.hpp>   // KdTreeView, limits, cfg_t (vector-free)
 
@@ -26,13 +27,16 @@ namespace kd3 {
 /// @brief Caller-provided storage the span builder fills.
 /// @details `vals` must hold >= B-1 entries, `dims` >= ceil((B-1)/dims_per_word),
 /// `buckets` >= B, where B = ceil(n/leaf_size) for the n points being built.
+/// When `Cfg.has_aabb` is set, `boxes` must hold >= 2*B-1 entries.
 template <typename Limits, cfg_t Cfg>
 struct BuildTarget {
     using scalar_t = Limits::scalar_t;
     using LeafBucket = typename KdTreeView<Limits, Cfg>::LeafBucket;
+    using NodeBox = typename KdTreeView<Limits, Cfg>::NodeBox;
     std::span<scalar_t>  vals;
     std::span<uint64_t>  dims;
     std::span<LeafBucket> buckets;
+    std::span<NodeBox>   boxes;
 };
 
 /// Number of internal-tree nodes on the left half of a binary tree with `n`
@@ -64,11 +68,13 @@ struct Builder {
     using scalar_t = Limits::scalar_t;
     using FatPoint = Limits::FatPoint;
     using LeafBucket = typename KdTreeView<Limits, Cfg>::LeafBucket;
+    using NodeBox = typename KdTreeView<Limits, Cfg>::NodeBox;
 
     std::span<FatPoint>  temp_pts;
     std::span<scalar_t>  vals;
     std::span<uint64_t>  dims;
     std::span<LeafBucket> buckets;
+    std::span<NodeBox>   boxes;
     std::size_t B;
 
     inline void set_dim(std::size_t i, uint8_t dim) {
@@ -87,6 +93,21 @@ struct Builder {
 
         if (node_idx >= B - 1) {
             const std::size_t bucket_idx = node_idx - (B - 1);
+            if constexpr (cfg.has_aabb) {
+                scalar_t min_b[Limits::D];
+                scalar_t max_b[Limits::D];
+                for (std::size_t d = 0; d < Limits::D; ++d)
+                    min_b[d] = max_b[d] = temp_pts[start].coords[d];
+                for (std::size_t i = start + 1; i < end; ++i)
+                    for (std::size_t d = 0; d < Limits::D; ++d) {
+                        min_b[d] = std::min(min_b[d], temp_pts[i].coords[d]);
+                        max_b[d] = std::max(max_b[d], temp_pts[i].coords[d]);
+                    }
+                for (std::size_t d = 0; d < Limits::D; ++d) {
+                    boxes[node_idx].minc[d] = min_b[d];
+                    boxes[node_idx].maxc[d] = max_b[d];
+                }
+            }
             for (std::size_t i = 0; i < size; ++i) {
                 for (std::size_t d = 0; d < Limits::D; ++d)
                     buckets[bucket_idx].coords[d][i] = temp_pts[start + i].coords[d];
@@ -112,6 +133,13 @@ struct Builder {
                 max_b[d] = std::max(max_b[d], temp_pts[i].coords[d]);
             }
 
+        if constexpr (cfg.has_aabb) {
+            for (std::size_t d = 0; d < Limits::D; ++d) {
+                boxes[node_idx].minc[d] = min_b[d];
+                boxes[node_idx].maxc[d] = max_b[d];
+            }
+        }
+
         std::uint8_t best_dim = 0;
         scalar_t max_ex = max_b[0] - min_b[0];
         for (std::uint8_t d = 1; d < Limits::D; ++d)
@@ -132,9 +160,9 @@ struct Builder {
         set_dim(node_idx, best_dim);
 
         if (size > cfg.thres_thread) {
-            #pragma omp task shared(temp_pts, vals, dims, buckets)
+            #pragma omp task shared(temp_pts, vals, dims, buckets, boxes)
             build(start, mid, 2 * node_idx + 1, left_buckets);
-            #pragma omp task shared(temp_pts, vals, dims, buckets)
+            #pragma omp task shared(temp_pts, vals, dims, buckets, boxes)
             build(mid, end, 2 * node_idx + 2, current_buckets - left_buckets);
             #pragma omp taskwait
         } else {
@@ -159,11 +187,18 @@ build_into(std::span<typename Limits::FatPoint> temp_pts, BuildTarget<Limits, Cf
     const std::size_t dims_per_word = KdTreeView<Limits, Cfg>::dims_per_word;
     const std::size_t n_vals = B > 0 ? B - 1 : 0;
     const std::size_t n_dims = (n_vals + dims_per_word - 1) / dims_per_word;
+    const std::size_t n_nodes = 2 * B - 1;
+    constexpr bool want_boxes = Cfg.has_aabb;
     if (target.vals.size() < n_vals || target.dims.size() < n_dims
         || target.buckets.size() < B)
         return std::unexpected(error_t::InsufficientStorage);
+    if constexpr (want_boxes) {
+        if (target.boxes.size() < n_nodes)
+            return std::unexpected(error_t::InsufficientStorage);
+    }
 
-    Builder<Limits, Cfg> builder{temp_pts, target.vals, target.dims, target.buckets, B};
+    Builder<Limits, Cfg> builder{temp_pts, target.vals, target.dims, target.buckets,
+                                 target.boxes, B};
     #pragma omp parallel
     {
         #pragma omp single
@@ -172,7 +207,9 @@ build_into(std::span<typename Limits::FatPoint> temp_pts, BuildTarget<Limits, Cf
     typename Limits::point_t rmin, rmax;
     for (std::size_t d = 0; d < Limits::D; ++d) { rmin[d] = -Limits::INF; rmax[d] = Limits::INF; }
     return KdTreeView<Limits, Cfg>{target.vals.first(n_vals), target.dims.first(n_dims),
-                                   target.buckets.first(B), rmin, rmax};
+                                   target.buckets.first(B), rmin, rmax,
+                                   want_boxes ? target.boxes.first(n_nodes)
+                                              : std::span<const typename KdTreeView<Limits, Cfg>::NodeBox>{}};
 }
 
 /// @brief Build into preallocated spans from points assumed already ordered.
@@ -186,11 +223,18 @@ build_from_ordered_into(std::span<typename Limits::FatPoint> temp_pts, BuildTarg
     const std::size_t dims_per_word = KdTreeView<Limits, Cfg>::dims_per_word;
     const std::size_t n_vals = B > 0 ? B - 1 : 0;
     const std::size_t n_dims = (n_vals + dims_per_word - 1) / dims_per_word;
+    const std::size_t n_nodes = 2 * B - 1;
+    constexpr bool want_boxes = Cfg.has_aabb;
     if (target.vals.size() < n_vals || target.dims.size() < n_dims
         || target.buckets.size() < B)
         return std::unexpected(error_t::InsufficientStorage);
+    if constexpr (want_boxes) {
+        if (target.boxes.size() < n_nodes)
+            return std::unexpected(error_t::InsufficientStorage);
+    }
 
-    Builder<Limits, Cfg, true> builder{temp_pts, target.vals, target.dims, target.buckets, B};
+    Builder<Limits, Cfg, true> builder{temp_pts, target.vals, target.dims, target.buckets,
+                                       target.boxes, B};
     #pragma omp parallel
     {
         #pragma omp single
@@ -199,7 +243,9 @@ build_from_ordered_into(std::span<typename Limits::FatPoint> temp_pts, BuildTarg
     typename Limits::point_t rmin, rmax;
     for (std::size_t d = 0; d < Limits::D; ++d) { rmin[d] = -Limits::INF; rmax[d] = Limits::INF; }
     return KdTreeView<Limits, Cfg>{target.vals.first(n_vals), target.dims.first(n_dims),
-                                   target.buckets.first(B), rmin, rmax};
+                                   target.buckets.first(B), rmin, rmax,
+                                   want_boxes ? target.boxes.first(n_nodes)
+                                              : std::span<const typename KdTreeView<Limits, Cfg>::NodeBox>{}};
 }
 
 }  // namespace kd3

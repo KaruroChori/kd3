@@ -43,17 +43,21 @@ public:
     using FatPoint = Limits::FatPoint;
     using KnnResult = Limits::KnnResult;
     using LeafBucket = KdTreeView<Limits,cfg>::LeafBucket;
+    using NodeBox = KdTreeView<Limits,cfg>::NodeBox;
     using error_t = KdTreeView<Limits,cfg>::error_t;
 
 private:
     std::vector<scalar_t> split_vals;
     std::vector<uint64_t> split_dims;
     std::vector<LeafBucket> buckets;
+    std::vector<typename KdTreeView<Limits,cfg>::NodeBox> node_boxes;
     point_t min_root;
     point_t max_root;
 
-    KdTree(std::vector<scalar_t> vals, std::vector<uint64_t> dims, std::vector<LeafBucket> bks)
-        : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)) {
+    KdTree(std::vector<scalar_t> vals, std::vector<uint64_t> dims, std::vector<LeafBucket> bks,
+           std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes = {})
+        : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)),
+          node_boxes(std::move(boxes)) {
         for (size_t d = 0; d < Limits::D; ++d) {
             min_root[d] = -Limits::INF;
             max_root[d] = Limits::INF;
@@ -73,12 +77,14 @@ public:
         if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
         const size_t B = (temp_pts.size() + cfg.leaf_size - 1) / cfg.leaf_size;
         const size_t dims_per_word = KdTreeView<Limits, cfg>::dims_per_word;
+        constexpr bool want_boxes = cfg.has_aabb;
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
         std::vector<LeafBucket> buckets(B);
-        auto view = build_into<Limits, cfg>(temp_pts, BuildTarget<Limits, cfg>{vals, dims, buckets});
+        std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes(want_boxes ? 2 * B - 1 : 0);
+        auto view = build_into<Limits, cfg>(temp_pts, BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
         if (!view) return std::unexpected(view.error());
-        return KdTree(std::move(vals), std::move(dims), std::move(buckets));
+        return KdTree(std::move(vals), std::move(dims), std::move(buckets), std::move(boxes));
     }
 
     /**
@@ -93,14 +99,16 @@ public:
         if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
         const size_t B = (temp_pts.size() + cfg.leaf_size - 1) / cfg.leaf_size;
         const size_t dims_per_word = KdTreeView<Limits, cfg>::dims_per_word;
+        constexpr bool want_boxes = cfg.has_aabb;
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
         std::vector<LeafBucket> buckets(B);
+        std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes(want_boxes ? 2 * B - 1 : 0);
         auto view = build_from_ordered_into<Limits, cfg>(
             std::span<FatPoint>{const_cast<FatPoint*>(temp_pts.data()), temp_pts.size()},
-            BuildTarget<Limits, cfg>{vals, dims, buckets});
+            BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
         if (!view) return std::unexpected(view.error());
-        return KdTree(std::move(vals), std::move(dims), std::move(buckets));
+        return KdTree(std::move(vals), std::move(dims), std::move(buckets), std::move(boxes));
     }
 
     /**
@@ -109,7 +117,7 @@ public:
      * @return KdTreeView The view of this tree after building.
      */
     KdTreeView<Limits,cfg> view() const noexcept {
-        return KdTreeView<Limits,cfg>(split_vals, split_dims, buckets, min_root, max_root);
+        return KdTreeView<Limits,cfg>(split_vals, split_dims, buckets, min_root, max_root, node_boxes);
     }
 
     /**

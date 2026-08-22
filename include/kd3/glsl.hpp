@@ -29,7 +29,9 @@ struct GlslConfigDyn {
         uint32_t binding_vals = 0;
         uint32_t binding_dims = 1;
         uint32_t binding_bks = 2;
+        uint32_t binding_boxes = 3;
         uint32_t max_k = 8;
+        bool has_aabb = false;
 
         size_t D=3;
 
@@ -45,6 +47,7 @@ struct GlslConfig {
     uint32_t binding_vals = 0;
     uint32_t binding_dims = 1;
     uint32_t binding_bks = 2;
+    uint32_t binding_boxes = 3;
     uint32_t max_k = 8;
     uint32_t max_stack_depth =48*2;
 };
@@ -90,13 +93,64 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
 
     oss << "layout(std430, binding = " << glsl_cfg.binding_vals << ") readonly buffer " << P_Title << "SplitVals { float " << P << "_split_vals[]; };\n";
     oss << "layout(std430, binding = " << glsl_cfg.binding_dims << ") readonly buffer " << P_Title << "SplitDims { uint64_t " << P << "_split_dims[]; };\n";
-    oss << "layout(std430, binding = " << glsl_cfg.binding_bks << ")  readonly buffer " << P_Title << "Buckets   { uint " << P << "_buckets[]; };\n\n";
+    oss << "layout(std430, binding = " << glsl_cfg.binding_bks << ")  readonly buffer " << P_Title << "Buckets   { uint " << P << "_buckets[]; };\n";
+    if (glsl_cfg.has_aabb) {
+        oss << "layout(std430, binding = " << glsl_cfg.binding_boxes << ") readonly buffer " << P_Title << "Boxes     { float " << P << "_boxes[]; };\n";
+    }
+    oss << "\n";
 
     oss << "uint " << P << "_get_dim(uint i) {\n";
     oss << "    uint idx = i / " << dims_per_word << "u;\n";
     oss << "    uint offset = (i % " << dims_per_word << "u) * " << dim_bits << "u;\n";
     oss << "    return uint(" << P << "_split_dims[idx] >> offset) & " << dim_mask << "u;\n";
     oss << "}\n\n";
+
+    const size_t box_stride_words = 2 * glsl_cfg.D;
+
+    auto emit_box_helpers = [&](){
+        auto emit_vec_load = [&](const std::string& var, size_t off){
+            oss << "    " << vec_type << " " << var << " = " << vec_type << "(";
+            for (size_t d = 0; d < glsl_cfg.D; ++d)
+                oss << P << "_boxes[base + " << (off + d) << "u]" << (d + 1 == glsl_cfg.D ? "" : ",");
+            oss << ");\n";
+        };
+        auto emit_reduce = [&](const std::string& fn, const std::string& var, const std::string& out){
+            const char comps[] = "xyzw";
+            std::string acc = var + ".x";
+            for (size_t d = 1; d < glsl_cfg.D && d < 4; ++d)
+                acc = fn + "(" + acc + ", " + var + "." + comps[d] + ")";
+            oss << "    float " << out << " = " << acc << ";\n";
+        };
+
+        oss << "float " << P << "_box_dist_sq(uint node, " << vec_type << " target) {\n";
+        oss << "    uint base = node * " << box_stride_words << "u;\n";
+        emit_vec_load("bmin", 0);
+        emit_vec_load("bmax", glsl_cfg.D);
+        oss << "    " << vec_type << " c = clamp(target, bmin, bmax);\n";
+        oss << "    " << vec_type << " diff = target - c;\n";
+        oss << "    return dot(diff, diff);\n";
+        oss << "}\n\n";
+
+        oss << "bool " << P << "_node_slab(uint node, " << vec_type << " ro, " << vec_type
+            << " rd, float radius, float t_in, float t_out, out float t_e, out float t_x) {\n";
+        oss << "    uint base = node * " << box_stride_words << "u;\n";
+        emit_vec_load("bmin", 0);
+        emit_vec_load("bmax", glsl_cfg.D);
+        oss << "    " << vec_type << " inv_rd = 1.0 / mix(rd, " << vec_type << "(1e-8), equal(rd, " << vec_type << "(0.0)));\n";
+        oss << "    " << vec_type << " t1 = (bmin - radius - ro) * inv_rd;\n";
+        oss << "    " << vec_type << " t2 = (bmax + radius - ro) * inv_rd;\n";
+        oss << "    " << vec_type << " mn = min(t1, t2);\n";
+        oss << "    " << vec_type << " mx = max(t1, t2);\n";
+        emit_reduce("max", "mn", "lo");
+        emit_reduce("min", "mx", "hi");
+        oss << "    lo = max(lo, t_in);\n";
+        oss << "    hi = min(hi, t_out);\n";
+        oss << "    t_e = lo;\n";
+        oss << "    t_x = hi;\n";
+        oss << "    return t_e <= t_x;\n";
+        oss << "}\n\n";
+    };
+    if (glsl_cfg.has_aabb) emit_box_helpers();
 
     auto gen_ray_logic = [&](bool with_index) {
         if (with_index) {
@@ -187,6 +241,30 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "            continue;\n";
         oss << "        }\n\n";
         
+        if (glsl_cfg.has_aabb) {
+        oss << "        uint left_child = 2u * curr + 1u;\n";
+        oss << "        uint right_child = 2u * curr + 2u;\n\n";
+        oss << "        float l_enter, l_exit, r_enter, r_exit;\n";
+        oss << "        bool hl = " << P << "_node_slab(left_child, ro, rd, epsilon, t_min, node_t_max, l_enter, l_exit);\n";
+        oss << "        bool hr = " << P << "_node_slab(right_child, ro, rd, epsilon, t_min, node_t_max, r_enter, r_exit);\n";
+        oss << "        bool vl = hl && l_enter < best_t;\n";
+        oss << "        bool vr = hr && r_enter < best_t;\n\n";
+        oss << "        if (vl && vr) {\n";
+        oss << "            bool left_first = l_enter <= r_enter;\n";
+        oss << "            uint far_c = left_first ? right_child : left_child;\n";
+        oss << "            float far_e = left_first ? r_enter : l_enter;\n";
+        oss << "            float far_x = left_first ? r_exit : l_exit;\n";
+        oss << "            uint near_c = left_first ? left_child : right_child;\n";
+        oss << "            float near_e = left_first ? l_enter : r_enter;\n";
+        oss << "            float near_x = left_first ? l_exit : r_exit;\n";
+        oss << "            stack_idx[stack_sz] = far_c;  stack_t_min[stack_sz] = far_e;  stack_t_max[stack_sz] = far_x;  stack_sz++;\n";
+        oss << "            stack_idx[stack_sz] = near_c; stack_t_min[stack_sz] = near_e; stack_t_max[stack_sz] = near_x; stack_sz++;\n";
+        oss << "        } else if (vl) {\n";
+        oss << "            stack_idx[stack_sz] = left_child;  stack_t_min[stack_sz] = l_enter; stack_t_max[stack_sz] = l_exit;  stack_sz++;\n";
+        oss << "        } else if (vr) {\n";
+        oss << "            stack_idx[stack_sz] = right_child; stack_t_min[stack_sz] = r_enter; stack_t_max[stack_sz] = r_exit;  stack_sz++;\n";
+        oss << "        }\n";
+        } else {
         oss << "        uint dim = " << P << "_get_dim(curr);\n";
         oss << "        float split = " << P << "_split_vals[curr];\n";
         
@@ -218,6 +296,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "            stack_t_max[stack_sz] = node_t_max;\n";
         oss << "            stack_sz++;\n";
         oss << "        }\n";
+        }
         oss << "    }\n\n";
         
         if (with_index) {
@@ -318,6 +397,23 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "            continue;\n";
         oss << "        }\n\n";
 
+        if (glsl_cfg.has_aabb) {
+        oss << "        uint left = 2u * curr + 1u;\n";
+        oss << "        uint right = 2u * curr + 2u;\n\n";
+        oss << "        float dl = " << P << "_box_dist_sq(left, target);\n";
+        oss << "        float dr = " << P << "_box_dist_sq(right, target);\n";
+        oss << "        uint f = dl <= dr ? left : right;\n";
+        oss << "        uint s = dl <= dr ? right : left;\n";
+        oss << "        float df = min(dl, dr);\n";
+        oss << "        float ds = max(dl, dr);\n";
+if (multi) {
+        oss << "        float bound = count < k ? 3.4e38 : out_results[k - 1u].dist_sq;\n";
+} else {
+        oss << "        float bound = min_dist_sq;\n";
+}
+        oss << "        if (ds < bound) { stack_idx[stack_sz] = s; stack_dist[stack_sz] = ds; stack_sz++; }\n";
+        oss << "        if (df < bound) { stack_idx[stack_sz] = f; stack_dist[stack_sz] = df; stack_sz++; }\n";
+        } else {
         oss << "        uint dim = " << P << "_get_dim(curr);\n";
         oss << "        float split = " << P << "_split_vals[curr];\n";
         oss << "        float axis_dist = target[dim] - split;\n";
@@ -336,6 +432,7 @@ inline std::string generate_glsl_dyn(const GlslConfigDyn& glsl_cfg = {}) {
         oss << "            stack_idx[stack_sz] = second; stack_dist[stack_sz] = axis_dist_sq; stack_sz++;\n";
         oss << "        }\n";
         oss << "        stack_idx[stack_sz] = first; stack_dist[stack_sz] = 0.0; stack_sz++;\n";
+        }
         oss << "    }\n\n";
 
         if (multi) {
@@ -376,7 +473,9 @@ std::string generate_glsl(const std::string& ns="kd3"){
         .binding_vals=glsl_cfg.binding_vals,
         .binding_dims=glsl_cfg.binding_dims,
         .binding_bks=glsl_cfg.binding_bks,
+        .binding_boxes=glsl_cfg.binding_boxes,
         .max_k=glsl_cfg.max_k,
+        .has_aabb=cfg.has_aabb,
 
         .D=Limits::D,
 
