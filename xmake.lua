@@ -3,7 +3,8 @@ local major, minor, patch = version:match("^(%d+)%.?(%d*)%.?(%d*)")
 set_version(version)
 set_license("AGPL-3.0-only")
 
-add_requires("openmp")
+-- TODO: not really needed I will have to let the user use the stub in case they don't/cannot have it.
+add_requires("openmp")  
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
 set_languages("cxx23","c23")
@@ -33,18 +34,6 @@ target("kd3")
         f:close()
     end)
 
-target("benchmarks.fast")
-    set_kind("binary")
-    add_files("benchmarks/benchmarks.fast.cpp")
-    add_includedirs("include", {public=true})    
-    add_packages("openmp")
-    if is_mode("release") then
-        set_optimize("fastest")
-        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native")
-    end
-    set_default(false)
-
 target("c-interface")
     set_kind("binary")
     add_files("examples/c-interface.c")
@@ -58,9 +47,9 @@ target("c-interface")
     end
     set_default(false)
 
-target("plot")
+target("sweep")
     set_kind("binary")
-    add_files("benchmarks/plot.cpp")
+    add_files("benchmarks/sweep.cpp")
     add_includedirs("include", {public=true})    
     add_packages("openmp")
     if is_mode("release") then
@@ -100,6 +89,7 @@ option_end()
 
 if has_config("with_evaluation") then
     add_requires("lastools", { configs = { shared = false } })
+    add_requires("nanoflann")
 end
 
 if has_config("with_demo") then

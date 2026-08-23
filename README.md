@@ -129,7 +129,7 @@ xmake run benchmarks
 and to generate a full plot
 
 ```sh
-xmake run plot
+xmake run sweep
 ```
 
 

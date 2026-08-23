@@ -1,17 +1,30 @@
 /**
  * @file benchmarks.comparative.cpp
- * @brief Dataset-driven benchmarking of kd3 against structured synthetic
- *        distributions and real-world point clouds (see tools/fetch-datasets.lua).
+ * @brief Dataset-driven comparative benchmarking of kd3 configurations against
+ *        structured synthetic distributions and real-world point clouds
+ *        (see tools/fetch-datasets.lua).
  *
- * Every cloud is measured twice - classic median-split tree and the optional
- * subtree-AABB variant (cfg_t::has_aabb) - under two query distributions:
+ * Two test kinds run over every cloud, each spanning the configuration matrix
+ * where the node type is semantically valid:
+ *
+ *   knn (k = --knn, default 10, payload-bearing trees only):
+ *       base : fat nodes, median splits
+ *       aabb : fat nodes + per-subtree bounding boxes (cfg_t::has_aabb)
+ *
+ *   nn1 (exact 1-NN, minimum squared distance - the only query the
+ *        lightweight nodes support):
+ *       base / aabb            : through query_1nn
+ *       fast / fast-aabb       : payload-free nodes (cfg_t::has_payload = NONE)
+ *                                through query_distance2_inline
+ *
+ * Query distributions for both kinds:
  *   - bbox-volume : queries uniform inside the cloud bounding box (raymarch-like access)
  *   - on-cloud    : queries sampled from the cloud itself, small jitter (kNN-graph-like access)
  *
- * All k-NN rows are validated against brute force. nanoflann (when compiled in
- * via --with_demo) has no notion of kd3's AABB flag, so it is measured once per
- * cloud/distribution and reported on every row as a fixed reference column.
- * Build behind `xmake f --with_evaluation=true`.
+ * All rows are validated against brute force. nanoflann (when compiled in via
+ * --with_demo) is measured once per cloud/distribution at matching k and
+ * stamped as a fixed reference. Results stream into kd3_datasets_report.csv
+ * and a Plotly comparison graph next to the binaries.
  */
 
 #include "datasets.hpp"
@@ -20,6 +33,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -34,8 +48,15 @@
 #include <nanoflann.hpp>
 #endif
 
-using TreeType     = kd3::KdTree<kd3::limits<float>, {.leaf_size = 32}>;
-using TreeTypeAabb = kd3::KdTree<kd3::limits<float>, {.leaf_size = 32, .has_aabb = true}>;
+using TreeType       = kd3::KdTree<kd3::limits<float>, {.leaf_size = 32}>;
+using TreeTypeAabb   = kd3::KdTree<kd3::limits<float>, {.leaf_size = 32, .has_aabb = true}>;
+using TreeTypeFast   = kd3::KdTree<kd3::limits<float>,
+                                   {.leaf_size = 32,
+                                    .has_payload = kd3::cfg_t::has_payload_t::NONE}>;
+using TreeTypeFastAabb = kd3::KdTree<kd3::limits<float>,
+                                     {.leaf_size = 32,
+                                      .has_payload = kd3::cfg_t::has_payload_t::NONE,
+                                      .has_aabb = true}>;
 
 namespace {
 
@@ -56,8 +77,6 @@ Options parse_options(int argc, char** argv) {
         if (arg.rfind("--queries=", 0) == 0) opts.n_queries = std::strtoull(value(), nullptr, 10);
         else if (arg.rfind("--knn=", 0) == 0) opts.k = std::strtoull(value(), nullptr, 10);
         else if (arg.rfind("--dir=", 0) == 0) opts.datasets_dir_arg = value();
-        else if (arg == "--aabb")
-            std::cout << "[note] --aabb ignored: both configurations are always measured.\n";
     }
     if (opts.n_queries == 0 || opts.k == 0 || opts.k > 128) {
         std::cerr << "Invalid options: queries and knn must be > 0, knn <= 128\n";
@@ -67,7 +86,7 @@ Options parse_options(int argc, char** argv) {
 }
 
 /// The datasets folder may not be the process working directory when launched
-/// through `xmake run` or from a build tree, so resolution order is:
+/// through `xmake run`, so resolution order is:
 /// explicit --dir -> $KD3_DATASETS_DIR -> ./datasets -> ancestors of the executable.
 std::filesystem::path resolve_datasets_dir(const Options& opts, const char* argv0) {
     if (!opts.datasets_dir_arg.empty()) return opts.datasets_dir_arg;
@@ -120,8 +139,9 @@ double seconds_since(std::chrono::high_resolution_clock::time_point t0) {
 // ---------------------------------------------------------
 
 struct Row {
-    std::string dataset, source, distribution;
-    bool aabb = false;
+    std::string dataset, source, distribution, config;
+    /// "knn" (k nearest, payload-bearing trees) or "nn1" (exact 1-NN).
+    const char* test = "knn";
     size_t n_points = 0, n_queries = 0, k = 0;
     double build_s = 0.0, kd3_s = 0.0, kd3_qps = 0.0;
     double nf_build_s = -1.0, nf_s = -1.0, nf_qps = -1.0;
@@ -149,16 +169,16 @@ std::string fixed(T value, int precision) {
 const char* ok_label(int v) { return v < 0 ? "n/a" : (v ? "YES" : "NO"); }
 
 void write_csv_header(std::ofstream& csv) {
-    csv << "dataset,source,distribution,aabb,n_points,n_queries,k,"
+    csv << "dataset,source,distribution,test,config,n_points,n_queries,k,"
            "build_s,kd3_s,kd3_qps,nf_build_s,nf_s,nf_qps,kd3_ok,nf_ok\n";
 }
 
 /// Rows are appended as soon as they exist (and flushed per cloud) so that
 /// interrupted runs still leave usable partial reports behind.
 void append_csv_row(std::ofstream& csv, const Row& r) {
-    csv << r.dataset << ',' << r.source << ',' << r.distribution << ',' << (r.aabb ? 1 : 0)
-        << ',' << r.n_points << ',' << r.n_queries << ',' << r.k << ',' << r.build_s << ','
-        << r.kd3_s << ',' << r.kd3_qps << ',' << r.nf_build_s << ',' << r.nf_s << ','
+    csv << r.dataset << ',' << r.source << ',' << r.distribution << ',' << r.test << ','
+        << r.config << ',' << r.n_points << ',' << r.n_queries << ',' << r.k << ',' << r.build_s
+        << ',' << r.kd3_s << ',' << r.kd3_qps << ',' << r.nf_build_s << ',' << r.nf_s << ','
         << r.nf_qps << ',' << r.kd3_ok << ',' << r.nf_ok << '\n';
 }
 
@@ -168,15 +188,19 @@ constexpr bool kHasNanoflann = true;
 constexpr bool kHasNanoflann = false;
 #endif
 
-/// Aligned summary table; one row per (cloud x configuration x query distribution).
-void print_table(const std::vector<Row>& rows) {
-    const int W_CLOUD = 24, W_SRC = 10, W_PTS = 11, W_DIST = 13, W_CFG = 8;
+/// Aligned summary table; one row per (cloud x configuration x test x distribution).
+void print_table(const std::vector<Row>& rows, size_t k) {
+    const int W_CLOUD = 24, W_SRC = 10, W_PTS = 11, W_DIST = 20, W_CFG = 10;
     const int W_MS = 10, W_QPS = 12;
 
     const auto rule = [&] {
         std::cout << std::string(W_CLOUD + W_SRC + W_PTS + W_DIST + W_CFG +
                                  ((kHasNanoflann ? 6 : 3) * (W_MS + W_QPS + 1)) + 24, '-')
                   << "\n";
+    };
+
+    const auto dist_label = [&](const Row& r) -> std::string {
+        return r.distribution + (r.test[0] == 'n' ? " /1nn" : " /" + std::to_string(k) + "nn");
     };
 
     std::cout << "\n";
@@ -196,10 +220,10 @@ void print_table(const std::vector<Row>& rows) {
     for (const auto& r : rows) {
         std::cout << std::left << std::setw(W_CLOUD) << r.dataset << std::setw(W_SRC) << r.source
                   << std::right << std::setw(W_PTS) << thousands(r.n_points) << "  " << std::left
-                  << std::setw(W_DIST) << r.distribution << std::setw(W_CFG)
-                  << (r.aabb ? "aabb" : "base") << std::right << std::setw(W_MS)
-                  << fixed(r.build_s * 1000.0, 1) << std::setw(W_MS) << fixed(r.kd3_s * 1000.0, 1)
-                  << std::setw(W_QPS) << thousands(static_cast<uint64_t>(r.kd3_qps));
+                  << std::setw(W_DIST) << dist_label(r) << std::setw(W_CFG) << r.config
+                  << std::right << std::setw(W_MS) << fixed(r.build_s * 1000.0, 1)
+                  << std::setw(W_MS) << fixed(r.kd3_s * 1000.0, 1) << std::setw(W_QPS)
+                  << thousands(static_cast<uint64_t>(r.kd3_qps));
         if constexpr (kHasNanoflann) {
             const bool has_nf = r.nf_qps >= 0;
             std::cout << std::setw(W_MS)
@@ -214,6 +238,143 @@ void print_table(const std::vector<Row>& rows) {
         std::cout << "\n";
     }
     rule();
+}
+
+// ---------------------------------------------------------
+// Plotly comparison graphs
+// ---------------------------------------------------------
+
+/// Emits one grouped-bar query chart per test kind (traces = configurations),
+/// plus a build-time chart. Categories are labelled cloud + distribution + test.
+void write_html_report(const std::filesystem::path& path, const std::vector<Row>& rows,
+                       size_t k) {
+    const auto cat_of = [&](const Row& r) {
+        return r.dataset + " " + r.distribution +
+               (r.test[0] == 'n' ? " /1nn" : " /" + std::to_string(k) + "nn");
+    };
+
+    std::vector<std::string> knn_cats, nn1_cats;
+    for (const auto& r : rows) {
+        auto& v = (r.test[0] == 'n') ? nn1_cats : knn_cats;
+        const std::string cat = cat_of(r);
+        if (std::find(v.begin(), v.end(), cat) == v.end()) v.push_back(cat);
+    }
+
+    struct TraceDef {
+        const char* name;
+        const char* color;
+        const char* config;
+        bool nn1;
+    };
+    const TraceDef qdefs[] = {
+        {"base", "#636efa", "base", false},
+        {"aabb", "#ef553b", "aabb", false},
+        {"nanoflann", "#ab63fa", "base", false}, // stamped reference lives on base rows
+        {"base", "#636efa", "base", true},
+        {"aabb", "#ef553b", "aabb", true},
+        {"fast", "#00cc96", "fast", true},
+        {"fast-aabb", "#ff7f0e", "fast-aabb", true},
+        {"nanoflann", "#ab63fa", "base", true},
+    };
+
+    std::ostringstream charts;
+    const char* chart_ids[] = {"q_knn", "q_1nn"};
+    for (int kind = 0; kind < 2; ++kind) {
+        const bool nn1 = kind == 1;
+        const char* cats_var = kind == 0 ? "cats_knn" : "cats_1nn";
+        std::ostringstream cats_json, traces;
+        const auto& cats = nn1 ? nn1_cats : knn_cats;
+        for (size_t i = 0; i < cats.size(); ++i)
+            cats_json << (i ? "," : "") << "'" << cats[i] << "'";
+
+        for (const auto& td : qdefs) {
+            if (td.nn1 != nn1) continue;
+            traces << "{name:'" << td.name << "',type:'bar',marker:{color:'" << td.color
+                   << "'},x:" << cats_var << ",y:[";
+            const bool is_nf_trace = std::strcmp(td.name, "nanoflann") == 0;
+            for (size_t i = 0; i < cats.size(); ++i) {
+                double v = -1;
+                for (const auto& r : rows) {
+                    const bool r_nn1 = r.test[0] == 'n';
+                    if (r_nn1 != nn1 || r.config != td.config) continue;
+                    if (cat_of(r) != cats[i]) continue;
+                    if (is_nf_trace) {
+                        if (r.nf_qps < 0) continue;
+                        v = r.nf_qps;
+                    } else {
+                        v = r.kd3_qps;
+                    }
+                    break;
+                }
+                traces << (i ? "," : "") << (v >= 0 ? std::to_string(v) : std::string("null"));
+            }
+            traces << "]},";
+        }
+
+        charts << "const " << cats_var << "=[" << cats_json.str() << "];\n"
+               << "Plotly.newPlot('" << chart_ids[kind]
+               << "',[" << traces.str() << "],"
+               << "{barmode:'group',margin:{b:140},title:'"
+               << (nn1 ? "Exact 1-NN throughput" : "k-NN throughput (k=")
+               << (nn1 ? "'" : std::to_string(k) + ")'")
+               << ",xaxis:{title:'',tickangle:-40,automargin:true},"
+               << "yaxis:{type:'log',title:'queries/s'}});\n";
+    }
+
+    // build-time chart: one category per cloud, one trace per configuration
+    std::vector<std::string> clouds;
+    for (const auto& r : rows)
+        if (std::find(clouds.begin(), clouds.end(), r.dataset) == clouds.end())
+            clouds.push_back(r.dataset);
+
+    struct BuildSeries {
+        const char* name;
+        const char* color;
+        const char* config;
+        bool nf;
+    };
+    const BuildSeries bs[] = {
+        {"base", "#636efa", "base", false},   {"aabb", "#ef553b", "aabb", false},
+        {"fast", "#00cc96", "fast", false},   {"fast-aabb", "#ff7f0e", "fast-aabb", false},
+        {"nanoflann", "#ab63fa", "base", true},
+    };
+    std::ostringstream build_traces, clouds_json;
+    for (const auto& series : bs) {
+        build_traces << "{name:'" << series.name << "',type:'bar',marker:{color:'"
+                     << series.color << "'},x:clouds,y:[";
+        for (size_t i = 0; i < clouds.size(); ++i) {
+            double v = -1;
+            for (const auto& r : rows) {
+                if (r.dataset != clouds[i]) continue;
+                if (series.nf) {
+                    if (r.nf_build_s >= 0) { v = r.nf_build_s * 1000.0; break; }
+                } else if (r.config == series.config) {
+                    v = r.build_s * 1000.0;
+                    break;
+                }
+            }
+            if (i) build_traces << ",";
+            build_traces << (v >= 0 ? std::to_string(v) : std::string("null"));
+        }
+        build_traces << "]},";
+    }
+    for (size_t i = 0; i < clouds.size(); ++i)
+        clouds_json << (i ? "," : "") << "'" << clouds[i] << "'";
+
+    std::ofstream html(path, std::ios::trunc);
+    if (!html) return;
+    html << "<!doctype html><html><head><meta charset='utf-8'>"
+         << "<title>kd3 comparative report</title>"
+         << "<script src='https://cdn.plot.ly/plotly-2.32.0.min.js'></script></head><body>"
+         << "<div id='q_knn' style='width:100%;height:480px'></div>"
+         << "<div id='q_1nn' style='width:100%;height:480px'></div>"
+         << "<div id='b' style='width:100%;height:420px'></div><script>\n"
+         << charts.str()
+         << "const clouds=[" << clouds_json.str() << "];\n"
+         << "Plotly.newPlot('b',[" << build_traces.str() << "],"
+         << "{barmode:'group',title:'build time',margin:{b:80},"
+         << "xaxis:{title:'',tickangle:-30,automargin:true},yaxis:{title:'ms'}});\n"
+         << "</script></body></html>";
 }
 
 // ---------------------------------------------------------
@@ -241,8 +402,6 @@ using NanoflannTree = nanoflann::KDTreeSingleIndexAdaptor<
 
 /// Tie-tolerant k-NN comparison: real-world clouds often contain duplicated or
 /// equidistant points, so result ORDER between implementations is not defined.
-/// We require the sorted squared-distance sequences to agree within a small
-/// relative tolerance (absorbing FP reassociation from SIMD/-ffast-math).
 bool knn_results_match(std::span<const LimitsF::KnnResult> got,
                        const std::vector<LimitsF::KnnResult>& brute) {
     if (got.size() != brute.size()) return false;
@@ -253,23 +412,42 @@ bool knn_results_match(std::span<const LimitsF::KnnResult> got,
     return true;
 }
 
+/// one_nn=false -> k-NN comparison (payload trees only).
+/// one_nn=true  -> exact 1-NN distance comparison (every configuration).
 template <typename TreeType>
 bool validate_against_brute_force(const TreeType& tree, const kdbench::QuerySet& queries,
                                   const std::vector<typename TreeType::FatPoint>& reference,
-                                  const Options& opts) {
+                                  const Options& opts, bool one_nn) {
     const size_t checks = std::min<size_t>(queries.size(), 100);
     for (size_t c = 0; c < checks; ++c) {
         const auto& q = queries[(c * 997) % queries.size()];
-        std::vector<typename TreeType::KnnResult> buffer(opts.k);
-        const auto got = tree.query_knn(q, buffer);
-        if (!got) return false;
-        if (!knn_results_match(*got, linear_scan(q.data(), opts.k, reference))) return false;
+        if (!one_nn) {
+            std::vector<typename TreeType::KnnResult> buffer(opts.k);
+            const auto got = tree.query_knn(q, buffer);
+            if (!got) return false;
+            if (!knn_results_match(*got, linear_scan(q.data(), opts.k, reference))) return false;
+        } else {
+            double got = -1;
+            if constexpr (TreeType::cfg.has_payload == kd3::cfg_t::has_payload_t::INDEX) {
+                const auto res = tree.query_1nn(q);
+                if (!res) return false;
+                got = res->dist_sq;
+            } else {
+                const auto res = tree.query_distance2(q);
+                if (!res) return false;
+                got = *res;
+            }
+            const auto brute = linear_scan(q.data(), 1, reference);
+            if (std::fabs(got - brute.front().dist_sq) >
+                1e-4f * std::max(1.0f, brute.front().dist_sq))
+                return false;
+        }
     }
     return true;
 }
 
 /// nanoflann has no kd3-config dependence: measured once per cloud and stamped
-/// on every row so base and aabb rows stay directly comparable.
+/// on the fat-node rows so every configuration stays directly comparable.
 struct NfData {
     bool present = false;
     double build_s = -1.0;
@@ -278,7 +456,8 @@ struct NfData {
         double s = -1.0, qps = -1.0;
         int ok = -1;
     };
-    Dist dists[2] = {};
+    Dist knn[2] = {}; // k = opts.k
+    Dist nn1[2] = {}; // k = 1
 };
 
 void measure_nanoflann(const kdbench::PointCloud& reference,
@@ -293,35 +472,39 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
     out.build_s = seconds_since(t0);
     std::cout << "[nanoflann] build " << fixed(out.build_s * 1000.0, 1) << " ms\n";
 
-    for (size_t w = 0; w < workloads.size(); ++w) {
-        std::vector<uint32_t> nf_indices(opts.k);
-        std::vector<float> nf_dists(opts.k);
-        volatile uint64_t sink = 0;
-        t0 = std::chrono::high_resolution_clock::now();
-        for (const auto& q : workloads[w].second) {
-            nf_tree.knnSearch(q.data(), opts.k, nf_indices.data(), nf_dists.data());
-            sink += nf_indices[0];
-        }
-        out.dists[w].s   = seconds_since(t0);
-        out.dists[w].qps = static_cast<double>(workloads[w].second.size()) / out.dists[w].s;
-
-        bool ok = true;
-        const size_t checks = std::min<size_t>(workloads[w].second.size(), 100);
-        for (size_t c = 0; c < checks; ++c) {
-            const auto& q = workloads[w].second[(c * 997) % workloads[w].second.size()];
-            nf_tree.knnSearch(q.data(), opts.k, nf_indices.data(), nf_dists.data());
-            const auto brute = linear_scan(q.data(), opts.k, reference);
-            for (size_t j = 0; j < opts.k; ++j) {
-                if (nf_indices[j] != brute[j].payload_id &&
-                    nf_dists[j] != brute[j].dist_sq) { ok = false; break; }
+    for (int variant = 0; variant < 2; ++variant) {
+        const size_t kk = variant == 0 ? opts.k : 1;
+        for (size_t w = 0; w < workloads.size(); ++w) {
+            std::vector<uint32_t> nf_indices(kk);
+            std::vector<float> nf_dists(kk);
+            volatile uint64_t sink = 0;
+            t0 = std::chrono::high_resolution_clock::now();
+            for (const auto& q : workloads[w].second) {
+                nf_tree.knnSearch(q.data(), kk, nf_indices.data(), nf_dists.data());
+                sink += nf_indices[0];
             }
-            if (!ok) break;
+            NfData::Dist& dst = variant == 0 ? out.knn[w] : out.nn1[w];
+            dst.s   = seconds_since(t0);
+            dst.qps = static_cast<double>(workloads[w].second.size()) / dst.s;
+
+            bool ok = true;
+            const size_t checks = std::min<size_t>(workloads[w].second.size(), 100);
+            for (size_t c = 0; c < checks; ++c) {
+                const auto& q = workloads[w].second[(c * 997) % workloads[w].second.size()];
+                nf_tree.knnSearch(q.data(), kk, nf_indices.data(), nf_dists.data());
+                const auto brute = linear_scan(q.data(), kk, reference);
+                for (size_t j = 0; j < kk; ++j) {
+                    if (nf_indices[j] != brute[j].payload_id &&
+                        nf_dists[j] != brute[j].dist_sq) { ok = false; break; }
+                }
+                if (!ok) break;
+            }
+            dst.ok = ok ? 1 : 0;
+            std::cout << "[nanoflann/" << workloads[w].first << (variant == 0 ? " k=" : " 1nn k=")
+                      << kk << "] " << fixed(dst.s * 1000.0, 1) << " ms "
+                      << thousands(static_cast<uint64_t>(dst.qps)) << " q/s | ok "
+                      << ok_label(dst.ok) << "\n";
         }
-        out.dists[w].ok = ok ? 1 : 0;
-        std::cout << "[nanoflann/" << workloads[w].first << "] "
-                  << fixed(out.dists[w].s * 1000.0, 1) << " ms "
-                  << thousands(static_cast<uint64_t>(out.dists[w].qps)) << " q/s | ok "
-                  << ok_label(out.dists[w].ok) << "\n";
     }
 #else
     (void)reference;
@@ -332,22 +515,28 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
 }
 
 /// Runs one kd3 configuration over the shared workload sets.
+/// one_nn=false -> k-NN test (payload-bearing trees only);
+/// one_nn=true  -> exact 1-NN test (every configuration).
 template <typename TreeType>
 void run_config(const std::string& name, const std::string& source,
                 kdbench::PointCloud&& raw_points,
                 const std::array<std::pair<const char*, kdbench::QuerySet>, 2>& workloads,
                 const kdbench::PointCloud& reference_cloud, const NfData& nf,
-                const Options& opts, std::vector<Row>& rows) {
+                const Options& opts, bool one_nn, std::vector<Row>& rows) {
     constexpr bool kIsAabb = TreeType::cfg.has_aabb;
-    const char* cfg_name = kIsAabb ? "aabb" : "base";
+    constexpr bool kFat    = TreeType::cfg.has_payload != kd3::cfg_t::has_payload_t::NONE;
+    const char* cfg_name   = !kFat ? (kIsAabb ? "fast-aabb" : "fast")
+                                   : (kIsAabb ? "aabb" : "base");
+    if (!one_nn && !kFat) return; // lightweight nodes cannot answer k-NN
 
     Row base_row;
     base_row.dataset   = name;
     base_row.source    = source;
-    base_row.aabb      = kIsAabb;
+    base_row.config    = cfg_name;
+    base_row.test      = one_nn ? "nn1" : "knn";
     base_row.n_points  = raw_points.size();
     base_row.n_queries = opts.n_queries;
-    base_row.k         = opts.k;
+    base_row.k         = one_nn ? 1 : opts.k;
 
     std::vector<typename TreeType::FatPoint> points_copy = raw_points;
 
@@ -359,38 +548,52 @@ void run_config(const std::string& name, const std::string& source,
         std::exit(1);
     }
     const auto& tree = *tree_result;
-    std::cout << "[" << cfg_name << "] build kd3 " << fixed(base_row.build_s * 1000.0, 1)
-              << " ms\n";
+    std::cout << "[" << cfg_name << (one_nn ? "/1nn]" : "/knn]") << " build kd3 "
+              << fixed(base_row.build_s * 1000.0, 1) << " ms\n";
 
     for (size_t w = 0; w < workloads.size(); ++w) {
         Row row = base_row;
         row.distribution = workloads[w].first;
         const auto& queries = workloads[w].second;
 
-        std::vector<typename TreeType::KnnResult> buffer(opts.k);
         volatile uint64_t sink = 0;
-
         t0 = std::chrono::high_resolution_clock::now();
-        for (const auto& q : queries) {
-            const auto res = tree.query_knn_inline(q, buffer);
-            sink += res->front().payload_id;
+
+        if (one_nn) {
+            for (const auto& q : queries) {
+                if constexpr (kFat) {
+                    const auto res = tree.query_1nn_inline(q);
+                    sink += res->payload_id;
+                } else {
+                    const auto res = tree.query_distance2_inline(q);
+                    sink += static_cast<uint64_t>(res.value());
+                }
+            }
+        } else {
+            std::vector<typename TreeType::KnnResult> buffer(opts.k);
+            for (const auto& q : queries) {
+                const auto res = tree.query_knn_inline(q, buffer);
+                sink += res->front().payload_id;
+            }
         }
         row.kd3_s   = seconds_since(t0);
         row.kd3_qps = static_cast<double>(queries.size()) / row.kd3_s;
-        row.kd3_ok  = validate_against_brute_force(tree, queries, points_copy, opts) ? 1 : 0;
+        row.kd3_ok =
+            validate_against_brute_force(tree, queries, points_copy, opts, one_nn) ? 1 : 0;
 
-        if (nf.present) {
+        if (nf.present && kFat) {
+            const NfData::Dist& ref = one_nn ? nf.nn1[w] : nf.knn[w];
             row.nf_build_s = nf.build_s;
-            row.nf_s       = nf.dists[w].s;
-            row.nf_qps     = nf.dists[w].qps;
-            row.nf_ok      = nf.dists[w].ok;
+            row.nf_s       = ref.s;
+            row.nf_qps     = ref.qps;
+            row.nf_ok      = ref.ok;
         }
 
-        std::cout << "[" << cfg_name << "/" << row.distribution << "] kd3 "
-                  << fixed(row.kd3_s * 1000.0, 1) << " ms "
-                  << thousands(static_cast<uint64_t>(row.kd3_qps)) << " q/s | ok "
+        std::cout << "[" << cfg_name << "/" << row.distribution
+                  << (one_nn ? " 1nn]" : " knn]") << " kd3 " << fixed(row.kd3_s * 1000.0, 1)
+                  << " ms " << thousands(static_cast<uint64_t>(row.kd3_qps)) << " q/s | ok "
                   << ok_label(row.kd3_ok);
-        if (nf.present)
+        if (nf.present && kFat)
             std::cout << " | nanoflann " << fixed(row.nf_s * 1000.0, 1) << " ms "
                       << thousands(static_cast<uint64_t>(row.nf_qps)) << " q/s";
         std::cout << "\n";
@@ -404,26 +607,32 @@ int main(int argc, char** argv) {
     const Options opts = parse_options(argc, argv);
     const std::filesystem::path datasets_dir = resolve_datasets_dir(opts, argc > 0 ? argv[0] : "");
 
-    std::cout << "kd3 dataset benchmark  [simd: " << TreeType::cfg.simd_parallelism
-              << "  leaf_size: " << TreeType::cfg.leaf_size << "  configs: base+aabb"
-              << "  k: " << opts.k << "  queries/row: " << opts.n_queries << "]\n";
+    std::filesystem::path out_dir;
+    {
+        std::error_code ec;
+        if (argc > 0 && argv[0]) {
+            const auto exe = std::filesystem::canonical(argv[0], ec);
+            if (!ec) out_dir = exe.parent_path();
+        }
+        if (out_dir.empty()) out_dir = std::filesystem::current_path();
+    }
+    const std::string csv_path  = (out_dir / "kd3_datasets_report.csv").string();
+    const std::string html_path = (out_dir / "kd3_comparative_report.html").string();
+
+    std::cout << "kd3 comparative benchmark  [simd: " << TreeType::cfg.simd_parallelism
+              << "  leaf_size: " << TreeType::cfg.leaf_size
+              << "  tests: knn(k=" << opts.k << ", fat trees)+nn1(all trees)"
+              << "  queries/row: " << opts.n_queries << "]\n";
     std::cout << "datasets dir: " << datasets_dir.string() << "\n\n";
     std::cout << "clouds  : every dataset file found above, plus fixed synthetic generators;\n"
                  "          each cloud indexes identically for all compared implementations.\n"
                  "queries : bbox-volume = uniform inside the cloud bounding box (raymarch-like)\n"
                  "          on-cloud    = sampled from the cloud itself, ~0.2% jitter (kNN-like)\n"
-                 "ok      : k-NN results match brute force within tie/fp tolerance\n\n";
+                 "tests   : knn = k nearest neighbours, fat trees only (base, aabb)\n"
+                 "          nn1 = exact 1-NN minimum distance, every configuration\n"
+                 "                (base, aabb, fast, fast-aabb)\n"
+                 "ok      : results match brute force within tie/fp tolerance\n\n";
 
-    // Reports belong next to the built binaries, independent of the working
-    // directory (which is pinned to the project root for datasets discovery).
-    const std::string csv_path = [&] {
-        std::error_code ec;
-        if (argc > 0 && argv[0]) {
-            const auto exe = std::filesystem::canonical(argv[0], ec);
-            if (!ec) return (exe.parent_path() / "kd3_datasets_report.csv").string();
-        }
-        return std::string("kd3_datasets_report.csv");
-    }();
     std::ofstream csv(csv_path, std::ios::trunc);
     if (!csv) {
         std::cerr << "Cannot open " << csv_path << " for writing\n";
@@ -476,7 +685,7 @@ int main(int argc, char** argv) {
 
     auto emit_cloud = [&](const std::string& name, const std::string& source,
                           kdbench::PointCloud&& base, std::vector<Row>& rows,
-                          std::ofstream& csv) {
+                          std::ofstream& csv_out) {
         const kdbench::PointCloud reference = base; // unsorted copy for queries & NF
         const auto workloads = derive_workloads(name, reference);
 
@@ -486,15 +695,36 @@ int main(int argc, char** argv) {
         const size_t first = rows.size();
         {
             auto c = base;
-            run_config<TreeType>(name, source, std::move(c), workloads, reference, nf, opts, rows);
+            run_config<TreeType>(name, source, std::move(c), workloads, reference, nf, opts,
+                                 false, rows);
         }
         {
             auto c = base;
             run_config<TreeTypeAabb>(name, source, std::move(c), workloads, reference, nf, opts,
-                                     rows);
+                                     false, rows);
         }
-        for (size_t i = first; i < rows.size(); ++i) append_csv_row(csv, rows[i]);
-        csv.flush();
+        {
+            auto c = base;
+            run_config<TreeType>(name, source, std::move(c), workloads, reference, nf, opts,
+                                 true, rows);
+        }
+        {
+            auto c = base;
+            run_config<TreeTypeAabb>(name, source, std::move(c), workloads, reference, nf, opts,
+                                     true, rows);
+        }
+        {
+            auto c = base;
+            run_config<TreeTypeFast>(name, source, std::move(c), workloads, reference, nf, opts,
+                                     true, rows);
+        }
+        {
+            auto c = base;
+            run_config<TreeTypeFastAabb>(name, source, std::move(c), workloads, reference, nf,
+                                         opts, true, rows);
+        }
+        for (size_t i = first; i < rows.size(); ++i) append_csv_row(csv_out, rows[i]);
+        csv_out.flush();
     };
 
     std::vector<Row> rows;
@@ -520,8 +750,9 @@ int main(int argc, char** argv) {
                    rows, csv);
     }
 
-    print_table(rows);
-    std::cout << "\nCSV report: "
-              << std::filesystem::absolute(csv_path).string() << "\n";
+    print_table(rows, opts.k);
+    write_html_report(html_path, rows, opts.k);
+    std::cout << "\nCSV report:   " << csv_path << "\n"
+              << "HTML graphs:  " << html_path << "\n";
     return 0;
 }

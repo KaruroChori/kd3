@@ -1,3 +1,5 @@
+# Outdated, waiting for a new trial
+
 Starting kd3 LEAF_SIZE Characterization Sweep (5 trials per config)...
 
 --- Tree Size: 100000 points ---
