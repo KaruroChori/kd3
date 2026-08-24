@@ -73,9 +73,9 @@ void run_benchmark_for_leaf(const char* config_name, size_t N, int trials,
         }
 
         // 2. Measure Build Time
-        auto tb0 = std::chrono::high_resolution_clock::now();
+        auto tb0 = std::chrono::steady_clock::now();
         auto tree_expected = TreeType::build(points);
-        auto tb1 = std::chrono::high_resolution_clock::now();
+        auto tb1 = std::chrono::steady_clock::now();
 
         if (!tree_expected) continue;
         const auto& tree = *tree_expected;
@@ -104,15 +104,15 @@ void run_benchmark_for_leaf(const char* config_name, size_t N, int trials,
 
         // 4. Measure Query Latency (Single Threaded to isolate purely architectural SIMD gains)
         for (size_t i = 0; i < NUM_QUERIES; ++i) {
-            auto t0 = std::chrono::high_resolution_clock::now();
+            auto t0 = std::chrono::steady_clock::now();
             if constexpr (PAYLOAD_FREE) {
                 auto res = tree.query_distance2_inline(queries[i]);
-                auto t1 = std::chrono::high_resolution_clock::now();
+                auto t1 = std::chrono::steady_clock::now();
                 if (res) dummy += static_cast<uint32_t>(*res);
                 local_query_times[i] = std::chrono::duration<double, std::nano>(t1 - t0).count();
             } else {
                 auto res = tree.query_1nn(queries[i]);
-                auto t1 = std::chrono::high_resolution_clock::now();
+                auto t1 = std::chrono::steady_clock::now();
 
                 if (res) dummy += res->payload_id; // prevent optimization
                 local_query_times[i] = std::chrono::duration<double, std::nano>(t1 - t0).count();

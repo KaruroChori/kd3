@@ -1,0 +1,79 @@
+<!doctype html><html><head><meta charset='utf-8'>
+<title>kd3 vs nanoflann — relative throughput</title>
+<script src='https://cdn.plot.ly/plotly-2.32.0.min.js'></script>
+<style>body{font-family:sans-serif;margin:24px;background:#fff}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.key{color:#555;margin:6px 0 14px}</style></head><body>
+<h1>kd3 vs nanoflann — relative throughput</h1>
+<p class='key'>5950X, single-threaded queries. Bar height = kd3 throughput as a percentage of
+nanoflann's on identical clouds and query sets.
+<b>▲</b> at or above nanoflann · <b>▼</b> below it · dashed line marks baseline.</p>
+
+<h2>k-NN (k=10)</h2>
+<div class='row'>
+
+      <div style='min-width:0'>
+        <h3 style='margin:6px 0 2px'>Volume queries (bbox-volume)</h3>
+        <div id='knn_vol' style='width:100%;height:460px'></div>
+        <script>
+        Plotly.newPlot('knn_vol', [{"name": "base", "x": ["autzen bbox-volume /10nn", "bunny bbox-volume /10nn", "cities bbox-volume /10nn", "dragon bbox-volume /10nn", "synthetic-solid bbox-volume /10nn", "synthetic-mixture bbox-volume /10nn", "synthetic-anisotropic bbox-volume /10nn", "synthetic-sphere-shell bbox-volume /10nn", "synthetic-torus bbox-volume /10nn", "synthetic-blobs bbox-volume /10nn", "synthetic-powerlaw bbox-volume /10nn"], "y": [44.4, 94.5, 58.8, 50.5, 206.3, 16.1, 3.1, 37.1, 36.5, 27.2, 33.7], "marker": {"color": "#636efa"}, "customdata": [158356, 405327, 1368878, 192644, 430531, 295771, 112510, 53001, 84485, 61877, 1282321], "type": "bar", "text": ["\u25bc44%", "\u25bc94%", "\u25bc59%", "\u25bc50%", "\u25b2206%", "\u25bc16%", "\u25bc3%", "\u25bc37%", "\u25bc37%", "\u25bc27%", "\u25bc34%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "aabb", "x": ["autzen bbox-volume /10nn", "bunny bbox-volume /10nn", "cities bbox-volume /10nn", "dragon bbox-volume /10nn", "synthetic-solid bbox-volume /10nn", "synthetic-mixture bbox-volume /10nn", "synthetic-anisotropic bbox-volume /10nn", "synthetic-sphere-shell bbox-volume /10nn", "synthetic-torus bbox-volume /10nn", "synthetic-blobs bbox-volume /10nn", "synthetic-powerlaw bbox-volume /10nn"], "y": [203.9, 133.9, 88.6, 160.0, 160.7, 87.6, 100.2, 239.5, 211.8, 208.0, 49.5], "marker": {"color": "#ef553b"}, "customdata": [158356, 405327, 1368878, 192644, 430531, 295771, 112510, 53001, 84485, 61877, 1282321], "type": "bar", "text": ["\u25b2204%", "\u25b2134%", "\u25bc89%", "\u25b2160%", "\u25b2161%", "\u25bc88%", "\u25b2100%", "\u25b2240%", "\u25b2212%", "\u25b2208%", "\u25bc50%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}],
+          {barmode:'group', height:460,
+            xaxis:{tickangle:-30, automargin:true},
+            yaxis:{title:'% of nanoflann q/s', zeroline:false, range:[0, null]},
+            shapes:[{type:'line', xref:'paper', x0:0, x1:1, y0:100, y1:100,
+                     line:{color:'#888', dash:'dot'}}],
+            legend:{title:{text:'configuration'}, orientation:'h', y:1.12},
+            margin:{t:40}, plot_bgcolor:'#fafafa'}, {responsive:true});
+        </script>
+      </div>
+
+      <div style='min-width:0'>
+        <h3 style='margin:6px 0 2px'>Surface queries (on-cloud)</h3>
+        <div id='knn_surf' style='width:100%;height:460px'></div>
+        <script>
+        Plotly.newPlot('knn_surf', [{"name": "base", "x": ["autzen on-cloud /10nn", "bunny on-cloud /10nn", "cities on-cloud /10nn", "dragon on-cloud /10nn", "synthetic-solid on-cloud /10nn", "synthetic-mixture on-cloud /10nn", "synthetic-anisotropic on-cloud /10nn", "synthetic-sphere-shell on-cloud /10nn", "synthetic-torus on-cloud /10nn", "synthetic-blobs on-cloud /10nn", "synthetic-powerlaw on-cloud /10nn"], "y": [171.3, 103.7, 42.2, 126.5, 182.9, 146.1, 186.4, 212.2, 213.8, 204.9, 141.4], "marker": {"color": "#636efa"}, "customdata": [300858, 1302091, 320078, 837202, 443626, 442995, 393728, 461038, 449138, 307700, 386299], "type": "bar", "text": ["\u25b2171%", "\u25b2104%", "\u25bc42%", "\u25b2127%", "\u25b2183%", "\u25b2146%", "\u25b2186%", "\u25b2212%", "\u25b2214%", "\u25b2205%", "\u25b2141%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "aabb", "x": ["autzen on-cloud /10nn", "bunny on-cloud /10nn", "cities on-cloud /10nn", "dragon on-cloud /10nn", "synthetic-solid on-cloud /10nn", "synthetic-mixture on-cloud /10nn", "synthetic-anisotropic on-cloud /10nn", "synthetic-sphere-shell on-cloud /10nn", "synthetic-torus on-cloud /10nn", "synthetic-blobs on-cloud /10nn", "synthetic-powerlaw on-cloud /10nn"], "y": [179.8, 98.1, 145.7, 116.1, 167.1, 143.9, 170.8, 184.9, 201.4, 209.3, 159.8], "marker": {"color": "#ef553b"}, "customdata": [300858, 1302091, 320078, 837202, 443626, 442995, 393728, 461038, 449138, 307700, 386299], "type": "bar", "text": ["\u25b2180%", "\u25bc98%", "\u25b2146%", "\u25b2116%", "\u25b2167%", "\u25b2144%", "\u25b2171%", "\u25b2185%", "\u25b2201%", "\u25b2209%", "\u25b2160%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}],
+          {barmode:'group', height:460,
+            xaxis:{tickangle:-30, automargin:true},
+            yaxis:{title:'% of nanoflann q/s', zeroline:false, range:[0, null]},
+            shapes:[{type:'line', xref:'paper', x0:0, x1:1, y0:100, y1:100,
+                     line:{color:'#888', dash:'dot'}}],
+            legend:{title:{text:'configuration'}, orientation:'h', y:1.12},
+            margin:{t:40}, plot_bgcolor:'#fafafa'}, {responsive:true});
+        </script>
+      </div>
+</div>
+
+<h2>k-NN (k=1) with fast queries supported</h2>
+<div class='row'>
+
+      <div style='min-width:0'>
+        <h3 style='margin:6px 0 2px'>Volume queries (bbox-volume)</h3>
+        <div id='nn1_vol' style='width:100%;height:460px'></div>
+        <script>
+        Plotly.newPlot('nn1_vol', [{"name": "base", "x": ["autzen bbox-volume /1nn", "bunny bbox-volume /1nn", "cities bbox-volume /1nn", "dragon bbox-volume /1nn", "synthetic-solid bbox-volume /1nn", "synthetic-mixture bbox-volume /1nn", "synthetic-anisotropic bbox-volume /1nn", "synthetic-sphere-shell bbox-volume /1nn", "synthetic-torus bbox-volume /1nn", "synthetic-blobs bbox-volume /1nn", "synthetic-powerlaw bbox-volume /1nn"], "y": [29.9, 106.2, 43.5, 46.3, 304.2, 7.5, 1.3, 22.4, 25.2, 17.4, 36.5], "marker": {"color": "#636efa"}, "customdata": [278158, 664791, 4665363, 281726, 1064457, 917134, 314311, 101754, 150192, 110247, 5214687], "type": "bar", "text": ["\u25bc30%", "\u25b2106%", "\u25bc43%", "\u25bc46%", "\u25b2304%", "\u25bc8%", "\u25bc1%", "\u25bc22%", "\u25bc25%", "\u25bc17%", "\u25bc36%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "aabb", "x": ["autzen bbox-volume /1nn", "bunny bbox-volume /1nn", "cities bbox-volume /1nn", "dragon bbox-volume /1nn", "synthetic-solid bbox-volume /1nn", "synthetic-mixture bbox-volume /1nn", "synthetic-anisotropic bbox-volume /1nn", "synthetic-sphere-shell bbox-volume /1nn", "synthetic-torus bbox-volume /1nn", "synthetic-blobs bbox-volume /1nn", "synthetic-powerlaw bbox-volume /1nn"], "y": [248.5, 188.4, 96.6, 222.1, 228.8, 78.7, 102.8, 246.0, 249.7, 253.3, 48.3], "marker": {"color": "#ef553b"}, "customdata": [278158, 664791, 4665363, 281726, 1064457, 917134, 314311, 101754, 150192, 110247, 5214687], "type": "bar", "text": ["\u25b2248%", "\u25b2188%", "\u25bc97%", "\u25b2222%", "\u25b2229%", "\u25bc79%", "\u25b2103%", "\u25b2246%", "\u25b2250%", "\u25b2253%", "\u25bc48%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "fast", "x": ["autzen bbox-volume /1nn", "bunny bbox-volume /1nn", "cities bbox-volume /1nn", "dragon bbox-volume /1nn", "synthetic-solid bbox-volume /1nn", "synthetic-mixture bbox-volume /1nn", "synthetic-anisotropic bbox-volume /1nn", "synthetic-sphere-shell bbox-volume /1nn", "synthetic-torus bbox-volume /1nn", "synthetic-blobs bbox-volume /1nn", "synthetic-powerlaw bbox-volume /1nn"], "y": [69.0, 211.9, 89.0, 96.6, 399.5, 16.4, 3.4, 52.8, 58.5, 43.4, 60.2], "marker": {"color": "#00cc96"}, "customdata": [278158, 664791, 4665363, 281726, 1064457, 917134, 314311, 101754, 150192, 110247, 5214687], "type": "bar", "text": ["\u25bc69%", "\u25b2212%", "\u25bc89%", "\u25bc97%", "\u25b2399%", "\u25bc16%", "\u25bc3%", "\u25bc53%", "\u25bc58%", "\u25bc43%", "\u25bc60%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "fast-aabb", "x": ["autzen bbox-volume /1nn", "bunny bbox-volume /1nn", "cities bbox-volume /1nn", "dragon bbox-volume /1nn", "synthetic-solid bbox-volume /1nn", "synthetic-mixture bbox-volume /1nn", "synthetic-anisotropic bbox-volume /1nn", "synthetic-sphere-shell bbox-volume /1nn", "synthetic-torus bbox-volume /1nn", "synthetic-blobs bbox-volume /1nn", "synthetic-powerlaw bbox-volume /1nn"], "y": [318.6, 270.6, 129.5, 319.2, 302.0, 101.4, 132.3, 323.4, 342.4, 351.6, 62.0], "marker": {"color": "#ff7f0e"}, "customdata": [278158, 664791, 4665363, 281726, 1064457, 917134, 314311, 101754, 150192, 110247, 5214687], "type": "bar", "text": ["\u25b2319%", "\u25b2271%", "\u25b2129%", "\u25b2319%", "\u25b2302%", "\u25b2101%", "\u25b2132%", "\u25b2323%", "\u25b2342%", "\u25b2352%", "\u25bc62%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}],
+          {barmode:'group', height:460,
+            xaxis:{tickangle:-30, automargin:true},
+            yaxis:{title:'% of nanoflann q/s', zeroline:false, range:[0, null]},
+            shapes:[{type:'line', xref:'paper', x0:0, x1:1, y0:100, y1:100,
+                     line:{color:'#888', dash:'dot'}}],
+            legend:{title:{text:'configuration'}, orientation:'h', y:1.12},
+            margin:{t:40}, plot_bgcolor:'#fafafa'}, {responsive:true});
+        </script>
+      </div>
+
+      <div style='min-width:0'>
+        <h3 style='margin:6px 0 2px'>Surface queries (on-cloud)</h3>
+        <div id='nn1_surf' style='width:100%;height:460px'></div>
+        <script>
+        Plotly.newPlot('nn1_surf', [{"name": "base", "x": ["autzen on-cloud /1nn", "bunny on-cloud /1nn", "cities on-cloud /1nn", "dragon on-cloud /1nn", "synthetic-solid on-cloud /1nn", "synthetic-mixture on-cloud /1nn", "synthetic-anisotropic on-cloud /1nn", "synthetic-sphere-shell on-cloud /1nn", "synthetic-torus on-cloud /1nn", "synthetic-blobs on-cloud /1nn", "synthetic-powerlaw on-cloud /1nn"], "y": [199.5, 159.7, 32.0, 212.2, 271.0, 185.0, 322.8, 310.9, 316.4, 262.3, 141.6], "marker": {"color": "#636efa"}, "customdata": [490602, 4066536, 733967, 1667025, 1266064, 1252555, 917924, 1133045, 1075320, 647724, 857776], "type": "bar", "text": ["\u25b2200%", "\u25b2160%", "\u25bc32%", "\u25b2212%", "\u25b2271%", "\u25b2185%", "\u25b2323%", "\u25b2311%", "\u25b2316%", "\u25b2262%", "\u25b2142%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "aabb", "x": ["autzen on-cloud /1nn", "bunny on-cloud /1nn", "cities on-cloud /1nn", "dragon on-cloud /1nn", "synthetic-solid on-cloud /1nn", "synthetic-mixture on-cloud /1nn", "synthetic-anisotropic on-cloud /1nn", "synthetic-sphere-shell on-cloud /1nn", "synthetic-torus on-cloud /1nn", "synthetic-blobs on-cloud /1nn", "synthetic-powerlaw on-cloud /1nn"], "y": [255.0, 145.0, 198.1, 172.9, 203.7, 158.7, 223.6, 243.7, 256.6, 263.1, 223.8], "marker": {"color": "#ef553b"}, "customdata": [490602, 4066536, 733967, 1667025, 1266064, 1252555, 917924, 1133045, 1075320, 647724, 857776], "type": "bar", "text": ["\u25b2255%", "\u25b2145%", "\u25b2198%", "\u25b2173%", "\u25b2204%", "\u25b2159%", "\u25b2224%", "\u25b2244%", "\u25b2257%", "\u25b2263%", "\u25b2224%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "fast", "x": ["autzen on-cloud /1nn", "bunny on-cloud /1nn", "cities on-cloud /1nn", "dragon on-cloud /1nn", "synthetic-solid on-cloud /1nn", "synthetic-mixture on-cloud /1nn", "synthetic-anisotropic on-cloud /1nn", "synthetic-sphere-shell on-cloud /1nn", "synthetic-torus on-cloud /1nn", "synthetic-blobs on-cloud /1nn", "synthetic-powerlaw on-cloud /1nn"], "y": [329.2, 262.7, 68.9, 326.3, 418.1, 243.7, 503.6, 450.4, 433.7, 413.9, 253.0], "marker": {"color": "#00cc96"}, "customdata": [490602, 4066536, 733967, 1667025, 1266064, 1252555, 917924, 1133045, 1075320, 647724, 857776], "type": "bar", "text": ["\u25b2329%", "\u25b2263%", "\u25bc69%", "\u25b2326%", "\u25b2418%", "\u25b2244%", "\u25b2504%", "\u25b2450%", "\u25b2434%", "\u25b2414%", "\u25b2253%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}, {"name": "fast-aabb", "x": ["autzen on-cloud /1nn", "bunny on-cloud /1nn", "cities on-cloud /1nn", "dragon on-cloud /1nn", "synthetic-solid on-cloud /1nn", "synthetic-mixture on-cloud /1nn", "synthetic-anisotropic on-cloud /1nn", "synthetic-sphere-shell on-cloud /1nn", "synthetic-torus on-cloud /1nn", "synthetic-blobs on-cloud /1nn", "synthetic-powerlaw on-cloud /1nn"], "y": [312.0, 218.2, 250.5, 214.8, 281.6, 191.5, 302.0, 292.9, 301.6, 311.7, 255.8], "marker": {"color": "#ff7f0e"}, "customdata": [490602, 4066536, 733967, 1667025, 1266064, 1252555, 917924, 1133045, 1075320, 647724, 857776], "type": "bar", "text": ["\u25b2312%", "\u25b2218%", "\u25b2251%", "\u25b2215%", "\u25b2282%", "\u25b2191%", "\u25b2302%", "\u25b2293%", "\u25b2302%", "\u25b2312%", "\u25b2256%"], "textposition": "outside", "cliponaxis": false, "textfont": {"color": "#333", "size": 12}, "hovertemplate": "%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann (%{customdata} q/s)<extra></extra>"}],
+          {barmode:'group', height:460,
+            xaxis:{tickangle:-30, automargin:true},
+            yaxis:{title:'% of nanoflann q/s', zeroline:false, range:[0, null]},
+            shapes:[{type:'line', xref:'paper', x0:0, x1:1, y0:100, y1:100,
+                     line:{color:'#888', dash:'dot'}}],
+            legend:{title:{text:'configuration'}, orientation:'h', y:1.12},
+            margin:{t:40}, plot_bgcolor:'#fafafa'}, {responsive:true});
+        </script>
+      </div>
+</div>
+</body></html>

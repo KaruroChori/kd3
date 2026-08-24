@@ -82,7 +82,7 @@ Feel free to tweak the parameters in its [code](./examples/render.cpp) and see w
 ## About performance & optimizations
 
 For fastest speed, profiling optimization are strongly suggested as they have shown a meaningful boost in performance for the building time of the kd-tree.  
-Oh, and GCC seems to be winning in terms of optimizations, but marginally. The difference was bigger in a prior version, but they are now more or less aligned.  
+Oh, and GCC seems to be winning in terms of optimizations, but marginally. The delta was bigger in a prior version of this library, but they are now more or less aligned.  
 There is a C interface available, so that it can be used even without C++; you can probably expect some mild performance degradation, in my limited tests it was around 3% due to the lack of inlining.  
 
 ## Dependencies

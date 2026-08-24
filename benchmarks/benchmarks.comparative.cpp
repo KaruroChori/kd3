@@ -130,8 +130,8 @@ std::vector<LimitsF::KnnResult> linear_scan(const float* target, size_t k,
     return heap;
 }
 
-double seconds_since(std::chrono::high_resolution_clock::time_point t0) {
-    return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
+double seconds_since(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
 // ---------------------------------------------------------
@@ -377,6 +377,135 @@ void write_html_report(const std::filesystem::path& path, const std::vector<Row>
          << "</script></body></html>";
 }
 
+/// Marketing view: throughput as % of nanoflann, split volume/surface,
+/// one color per configuration. Requires nanoflann reference rows.
+void write_relative_report(const std::filesystem::path& path,
+                           const std::vector<Row>& rows, size_t k) {
+    struct Panel { const char* test; const char* dist; const char* title; const char* id; };
+    struct Ent { std::string label, cfg; double rel, nf_qps; };
+    const Panel panels[] = {
+        {"knn", "bbox-volume", "Volume queries",  "knn_vol"},
+        {"knn", "on-cloud",    "Surface queries", "knn_surf"},
+        {"nn1", "bbox-volume", "Volume queries",  "nn1_vol"},
+        {"nn1", "on-cloud",    "Surface queries", "nn1_surf"},
+    };
+    const char* cfg_names[]  = {"base", "aabb", "fast", "fast-aabb"};
+    const char* cfg_colors[] = {"#636efa", "#ef553b", "#00cc96", "#ff7f0e"};
+
+    // ---- collect panels (natural run order) ----
+    struct Collected {
+        const Panel* p;
+        std::vector<std::string> labels;
+        std::vector<Ent> entries;
+        bool any_nf_row = false;
+    };
+    std::vector<Collected> collected;
+    for (const auto& p : panels) {
+        Collected c;
+        c.p = &p;
+        for (const auto& r : rows) {
+            if (std::string_view(r.test) != std::string_view(p.test)) continue;
+            if (r.distribution != p.dist) continue;
+            if (r.nf_qps < 0 || r.kd3_qps <= 0) continue;
+            c.any_nf_row = true;
+            std::string short_name = r.dataset;
+            const std::string pre = "synthetic-";
+            if (short_name.rfind(pre, 0) == 0) short_name.erase(0, pre.size());
+            if (std::find(c.labels.begin(), c.labels.end(), short_name) == c.labels.end())
+                c.labels.push_back(short_name);
+            c.entries.push_back({short_name, r.config, r.kd3_qps / r.nf_qps * 100.0, r.nf_qps});
+        }
+        collected.push_back(std::move(c));
+    }
+
+    // ---- page skeleton: section heading + panel divs per test kind ----
+    std::ostringstream body;
+    for (int kind = 0; kind < 2; ++kind) {
+        const bool nn1 = kind == 1;
+        const std::string heading =
+            nn1 ? std::string("Exact 1-NN \u2014 all configurations")
+                : "k-NN \u2014 k=" + std::to_string(k);
+        body << "<h2 style='margin:10px 0 4px'>" << heading << "</h2>\n"
+             << "<div style='display:grid;"
+                "grid-template-columns:repeat(2,minmax(0,1fr));gap:16px'>\n";
+        for (const auto& c : collected) {
+            if ((c.p->test[0] == 'n') != nn1 || !c.any_nf_row) continue;
+            body << "<div><h3 style='margin:6px 0 2px'>" << c.p->title << "</h3>"
+                 << "<div id='" << c.p->id << "' style='width:100%;height:440px'></div></div>\n";
+        }
+        body << "</div>\n";
+    }
+
+    // ---- one self-contained newPlot per panel ----
+    for (const auto& c : collected) {
+        if (!c.any_nf_row) continue;
+
+        std::ostringstream xarr, traces;
+        for (size_t i = 0; i < c.labels.size(); ++i)
+            xarr << (i ? "," : "") << '"' << c.labels[i] << '"';
+
+        std::vector<const char*> active;
+        for (size_t ci = 0; ci < 4; ++ci)
+            if (std::any_of(c.entries.begin(), c.entries.end(),
+                            [&](const Ent& e){ return e.cfg == cfg_names[ci]; }))
+                active.push_back(cfg_names[ci]);
+
+        bool first_trace = true;
+        for (const char* cfg : active) {
+            const char* color = "#888";
+            for (size_t ci = 0; ci < 4; ++ci)
+                if (cfg == cfg_names[ci]) { color = cfg_colors[ci]; break; }
+
+            std::ostringstream ys, txt, cds;
+            for (size_t i = 0; i < c.labels.size(); ++i) {
+                const Ent* e = nullptr;
+                for (const auto& x : c.entries)
+                    if (x.cfg == cfg && x.label == c.labels[i]) { e = &x; break; }
+                if (i) { ys << ","; txt << ","; cds << ","; }
+                if (!e) { ys << "null"; txt << "\"null\""; cds << "null"; continue; }
+                ys << fixed(e->rel, 1);
+                txt << '"' << (e->rel >= 100.0 ? "\u25b2" : "\u25bc")
+                    << static_cast<long long>(e->rel + 0.5) << "%\"";
+                cds << fixed(e->nf_qps, 0);
+            }
+            if (!first_trace) traces << ",";
+            first_trace = false;
+            traces << "{name:'" << cfg << "',type:'bar',marker:{color:'" << color
+                   << "'},x:[" << xarr.str() << "],y:[" << ys.str()
+                   << "],text:[" << txt.str() << "],textposition:'outside',cliponaxis:false,"
+                   << "textfont:{color:'#333',size:12},customdata:[" << cds.str() << "],"
+                   << "hovertemplate:'%{x}<br>%{fullData.name}: %{y:.1f}% of nanoflann"
+                      " (%{customdata} q/s)<extra></extra>'}";
+        }
+
+        const std::string sub_title =
+            c.p->dist == std::string("bbox-volume") ? "Volume queries (bbox-volume)"
+                                                    : "Surface queries (on-cloud)";
+        body << "Plotly.newPlot('" << c.p->id << "',[" << traces.str() << "],"
+             << "{barmode:'group',height:440,title:'" << sub_title
+             << "',xaxis:{tickangle:-30,automargin:true},"
+             << "yaxis:{title:'% of nanoflann q/s',zeroline:false},"
+             << "shapes:[{type:'line',xref:'paper',x0:0,x1:1,y0:100,y1:100,"
+             << "line:{color:'#888',dash:'dot'}}],"
+             << "legend:{orientation:'h'},margin:{t:60,b:90},plot_bgcolor:'#fafafa'},"
+             << "{responsive:true});\n";
+    }
+
+    std::ofstream html(path, std::ios::trunc);
+    if (!html) return;
+    html << "<!doctype html><html><head><meta charset='utf-8'>"
+         << "<title>kd3 vs nanoflann - relative throughput</title>"
+         << "<script src='https://cdn.plot.ly/plotly-2.32.0.min.js'></script>"
+         << "<style>body{font-family:sans-serif;margin:24px;background:#fff}"
+         << ".key{color:#555;margin:6px 0 14px}</style></head><body>"
+         << "<h1>kd3 vs nanoflann &mdash; relative throughput</h1>"
+         << "<p class='key'>Single-threaded queries. Bar height is kd3 throughput as a "
+         << "percentage of nanoflann's on identical clouds and query sets. "
+         << "&#9650; at or above nanoflann &middot; &#9660; below it &middot; dashed line "
+         << "marks parity.</p>"
+         << body.str() << "</body></html>";
+}
+
 // ---------------------------------------------------------
 // Benchmarking core
 // ---------------------------------------------------------
@@ -466,7 +595,7 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
 #if defined(KD3_BENCH_NANOFLANN)
     Kd3PointAdaptor<TreeType> adaptor(reference);
     NanoflannTree<TreeType> nf_tree(3, adaptor, {10});
-    auto t0 = std::chrono::high_resolution_clock::now();
+    auto t0 = std::chrono::steady_clock::now();
     nf_tree.buildIndex();
     out.present = true;
     out.build_s = seconds_since(t0);
@@ -478,7 +607,7 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
             std::vector<uint32_t> nf_indices(kk);
             std::vector<float> nf_dists(kk);
             volatile uint64_t sink = 0;
-            t0 = std::chrono::high_resolution_clock::now();
+            t0 = std::chrono::steady_clock::now();
             for (const auto& q : workloads[w].second) {
                 nf_tree.knnSearch(q.data(), kk, nf_indices.data(), nf_dists.data());
                 sink += nf_indices[0];
@@ -540,7 +669,7 @@ void run_config(const std::string& name, const std::string& source,
 
     std::vector<typename TreeType::FatPoint> points_copy = raw_points;
 
-    auto t0 = std::chrono::high_resolution_clock::now();
+    auto t0 = std::chrono::steady_clock::now();
     auto tree_result = TreeType::build(raw_points);
     base_row.build_s = seconds_since(t0);
     if (!tree_result) {
@@ -557,7 +686,7 @@ void run_config(const std::string& name, const std::string& source,
         const auto& queries = workloads[w].second;
 
         volatile uint64_t sink = 0;
-        t0 = std::chrono::high_resolution_clock::now();
+        t0 = std::chrono::steady_clock::now();
 
         if (one_nn) {
             for (const auto& q : queries) {
@@ -752,7 +881,14 @@ int main(int argc, char** argv) {
 
     print_table(rows, opts.k);
     write_html_report(html_path, rows, opts.k);
+#ifdef KD3_BENCH_NANOFLANN
+    const std::string rel_path = (out_dir / "kd3_relative_report.html").string();
+    write_relative_report(rel_path, rows, opts.k);
+#endif
     std::cout << "\nCSV report:   " << csv_path << "\n"
               << "HTML graphs:  " << html_path << "\n";
+#ifdef KD3_BENCH_NANOFLANN
+    std::cout << "Relative view: " << rel_path << "\n";
+#endif
     return 0;
 }

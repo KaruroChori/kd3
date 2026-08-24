@@ -128,14 +128,14 @@ int main() {
     }
 
     // 2. Build KdTree natively utilizing LEAF_SIZE = 8 for 1:1 GLSL SSBO matching
-    auto t1 = std::chrono::high_resolution_clock::now();
+    auto t1 = std::chrono::steady_clock::now();
     auto tree_expected = TreeType::build(build_points);
     if (!tree_expected) {
         std::cerr << "Failed to build tree! Empty input?\n";
         return 1;
     }
     TreeType kdtree = std::move(tree_expected.value());
-    auto t2 = std::chrono::high_resolution_clock::now();
+    auto t2 = std::chrono::steady_clock::now();
     std::cout << "KdTree Built in: " 
               << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() 
               << " ms\n\n";
