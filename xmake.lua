@@ -3,8 +3,17 @@ local major, minor, patch = version:match("^(%d+)%.?(%d*)%.?(%d*)")
 set_version(version)
 set_license("AGPL-3.0-only")
 
--- TODO: not really needed I will have to let the user use the stub in case they don't/cannot have it.
-add_requires("openmp")  
+add_repositories("xmake-chari-repo https://github.com/KaruroChori/xmake-chari-repo.git master")
+
+option("use_openmp")
+    set_default(true)
+    set_showmenu(true)
+    set_category("Build Options")
+    set_description("Build with the real OpenMP package; disable to use omp-stub (fake OpenMP, runs serial)")
+option_end()
+
+local omp_package = has_config("use_openmp") and "openmp" or "omp-stub"
+add_requires(omp_package)
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
 set_languages("cxx23","c23")
@@ -16,7 +25,7 @@ target("kd3")
     add_includedirs("include", {public=true})    
     add_headerfiles("include/(**)", {prefixdir = ""})
     add_files("lib/kd3/**.cpp")
-    add_packages("openmp")
+    add_packages(omp_package)
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
@@ -38,7 +47,7 @@ target("c-interface")
     set_kind("binary")
     add_files("examples/c-interface.c")
     add_includedirs("include", {public=true})    
-    add_packages("openmp")
+    add_packages(omp_package)
     add_deps("kd3")
     if is_mode("release") then
         set_optimize("fastest")
@@ -51,7 +60,7 @@ target("sweep")
     set_kind("binary")
     add_files("benchmarks/sweep.cpp")
     add_includedirs("include", {public=true})    
-    add_packages("openmp")
+    add_packages(omp_package)
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
@@ -106,7 +115,7 @@ if has_config("with_evaluation") then
         add_files("benchmarks/benchmarks.comparative.cpp")
         add_includedirs("include", {public=true})
         add_includedirs("benchmarks")
-        add_packages("openmp")
+        add_packages(omp_package)
         add_packages("lastools")
         -- Static-linked for full optimization; this evaluation-only binary is not
         -- distributed as part of the library, so we assert license compatibility here.
@@ -133,7 +142,7 @@ target("render.raymarch")
     add_files("./examples/render.raymarch.cpp")
     add_deps("kd3")
     add_packages("raylib")
-    add_packages("openmp")
+    add_packages(omp_package)
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
@@ -145,7 +154,7 @@ target("render.raytrace")
     add_files("./examples/render.raytrace.cpp")
     add_deps("kd3")
     add_packages("raylib")
-    add_packages("openmp")
+    add_packages(omp_package)
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
