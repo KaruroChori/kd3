@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <array>
 #include <bit>
+#include <type_traits>
 #include "version.h"
 
 //TODO: change a bit to make it more compatible with other compilers as well.
@@ -281,8 +282,10 @@ public:
         return query_ray_inline(ro, rd, max_t, radius);
     }
 
-    KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
-        if constexpr (cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
+    template <bool WithIndex>
+    KD3_INLINE std::expected<std::conditional_t<WithIndex, RayHit, distance_t>, error_t>
+    ray_impl(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
+        if constexpr (WithIndex && cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
         if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
@@ -291,7 +294,7 @@ public:
         size_t stack_sz = 0;
         
         scalar_t best_t = max_t;
-        payload_t best_id = Limits::INF_IDX;
+        [[maybe_unused]] payload_t best_id = Limits::INF_IDX;
         bool hit = false;
         
         point_t inv_rd;
@@ -352,7 +355,7 @@ public:
                                         
                         if (dist_sq <= radius_sq + eps) {
                             best_t = t;
-                            best_id = b.ids[i];
+                            if constexpr (WithIndex) best_id = b.ids[i];
                             hit = true;
                         }
                     }
@@ -431,11 +434,19 @@ public:
         }
         
         // Filter out dummy padding points safely
-        if (hit && best_id != Limits::INF_IDX) {
-            return RayHit{best_t, best_id};
+        if (hit) {
+            if constexpr (WithIndex) {
+                if (best_id != Limits::INF_IDX) return RayHit{best_t, best_id};
+            } else {
+                return static_cast<distance_t>(best_t);
+            }
         }
-        
+
         return std::unexpected{error_t::NotFound};
+    }
+
+    KD3_INLINE std::expected<RayHit, error_t> query_ray_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
+        return ray_impl<true>(ro, rd, max_t, radius);
     }
 
     /**
@@ -452,149 +463,7 @@ public:
     }
 
     KD3_INLINE std::expected<distance_t, error_t> query_ray_distance_inline(const point_t ro, const point_t rd, scalar_t max_t = Limits::INF, scalar_t radius = scalar_t{}) const noexcept {
-        if constexpr (!std::is_floating_point_v<distance_t>) return std::unexpected{error_t::NotSupported};
-        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
-
-        struct RayNode { size_t idx; scalar_t t_min; scalar_t t_max; };
-        RayNode stack[cfg.max_stack_depth];
-        size_t stack_sz = 0;
-        
-        scalar_t best_t = max_t;
-        bool hit = false;
-        
-        point_t inv_rd;
-        for (size_t i = 0; i < Limits::D; ++i) {
-            inv_rd[i] = (rd[i] == 0.0f) ? 0.0f : (1.0f / rd[i]); 
-        }
-
-        scalar_t tN = scalar_t{};
-        scalar_t tF = max_t;
-        for (size_t i = 0; i < Limits::D; ++i) {
-            scalar_t t1 = (min_root[i] - ro[i]) * inv_rd[i];
-            scalar_t t2 = (max_root[i] - ro[i]) * inv_rd[i];
-            tN = std::max(tN, std::min(t1, t2));
-            tF = std::min(tF, std::max(t1, t2));
-        }
-
-        if (tN > tF) return std::unexpected{error_t::NotFound};
-        
-        stack[stack_sz++] = {0, tN, tF};
-
-        scalar_t rd_len_sq = 0.0f;
-        for (size_t d = 0; d < Limits::D; ++d) rd_len_sq += rd[d]*rd[d];
-
-        scalar_t inv_rd_len_sq = rd_len_sq > 0.0f ? 1.0f / rd_len_sq : 0.0f;
-        scalar_t radius_sq = radius * radius;
-        scalar_t eps = radius_sq > 0.0f ? 0.0f : 1e-5f;
-
-        const size_t LEAF_THRESHOLD = buckets.size() - 1;
-        bool tight = false;
-        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
-
-        while (stack_sz > 0) {
-            auto [curr, t_min, node_t_max] = stack[--stack_sz];
-            
-            if (t_min >= best_t) continue;
-            
-            if (curr >= LEAF_THRESHOLD) {
-                size_t bucket_idx = curr - LEAF_THRESHOLD;
-                const auto& b = buckets[bucket_idx];
-                
-                for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                    scalar_t t_num = 0.0f;
-                    for(size_t d = 0; d < Limits::D; ++d) {
-                        t_num += (b.coords[d][i] - ro[d]) * rd[d];
-                    }
-                    scalar_t t = t_num * inv_rd_len_sq;
-                    
-                    if (t >= 0.0f && t < best_t) {
-                        scalar_t dist_sq = 0.0f;
-                        for(size_t d = 0; d < Limits::D; ++d) {
-                            scalar_t px = ro[d] + t * rd[d];
-                            scalar_t diff = b.coords[d][i] - px;
-                            dist_sq += diff * diff;
-                        }
-                                        
-                        if (dist_sq <= radius_sq + eps) {
-                            best_t = t;
-                            hit = true;
-                        }
-                    }
-                }
-                continue;
-            }
-            
-            const size_t left_child = 2 * curr + 1;
-            const size_t right_child = 2 * curr + 2;
-
-            if (tight) {
-                scalar_t l_enter = t_min, l_exit = node_t_max;
-                scalar_t r_enter = t_min, r_exit = node_t_max;
-                const bool hl = node_slab(left_child, ro, rd, radius, t_min, node_t_max, l_enter, l_exit);
-                const bool hr = node_slab(right_child, ro, rd, radius, t_min, node_t_max, r_enter, r_exit);
-                const bool vl = hl && l_enter < best_t;
-                const bool vr = hr && r_enter < best_t;
-                if (vl && vr) {
-                    if (l_enter <= r_enter) {
-                        stack[stack_sz++] = {right_child, r_enter, r_exit};
-                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
-                    } else {
-                        stack[stack_sz++] = {left_child,  l_enter,  l_exit };
-                        stack[stack_sz++] = {right_child, r_enter, r_exit};
-                    }
-                } else if (vl) {
-                    stack[stack_sz++] = {left_child,  l_enter,  l_exit };
-                } else if (vr) {
-                    stack[stack_sz++] = {right_child, r_enter, r_exit};
-                }
-                continue;
-            }
-
-            uint8_t dim = get_dim(curr);
-            scalar_t split = split_vals[curr];
-            
-            if (rd[dim] == 0.0f) {
-                scalar_t dist_to_split = split - ro[dim];
-                if (dist_to_split > radius) {
-                    stack[stack_sz++] = {left_child, t_min, node_t_max};
-                } else if (dist_to_split < -radius) {
-                    stack[stack_sz++] = {right_child, t_min, node_t_max};
-                } else {
-                    stack[stack_sz++] = {right_child, t_min, node_t_max};
-                    stack[stack_sz++] = {left_child, t_min, node_t_max};
-                }
-                continue;
-            }
-            
-            size_t first  = rd[dim] >= 0.0f ? left_child : right_child;
-            size_t second = rd[dim] >= 0.0f ? right_child : left_child;
-            
-            scalar_t t_split = (split - ro[dim]) * inv_rd[dim];
-            scalar_t abs_inv_rd = inv_rd[dim] < 0.0f ? -inv_rd[dim] : inv_rd[dim];
-            scalar_t t_margin = radius * abs_inv_rd;
-            
-            scalar_t t_enter_second = t_split - t_margin;
-            scalar_t t_leave_first  = t_split + t_margin;
-            
-            bool visit_first  = t_min <= t_leave_first;
-            bool visit_second = node_t_max >= t_enter_second;
-            
-            if (visit_first && visit_second) {
-                scalar_t max_t_enter = t_min > t_enter_second ? t_min : t_enter_second;
-                scalar_t min_t_leave = node_t_max < t_leave_first ? node_t_max : t_leave_first;
-                
-                stack[stack_sz++] = {second, max_t_enter, node_t_max};
-                stack[stack_sz++] = {first, t_min, min_t_leave};
-            } else if (visit_first) {
-                stack[stack_sz++] = {first, t_min, node_t_max};
-            } else if (visit_second) {
-                stack[stack_sz++] = {second, t_min, node_t_max};
-            }
-        }
-        
-        if (hit) return static_cast<distance_t>(best_t);
-        
-        return std::unexpected{error_t::NotFound};
+        return ray_impl<false>(ro, rd, max_t, radius);
     }
 
     /**
@@ -607,12 +476,14 @@ public:
         return query_1nn_inline(target);
     }
 
-    KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
-        if constexpr (cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
+    template <bool WithPayload>
+    KD3_INLINE std::expected<std::conditional_t<WithPayload, KnnResult, distance_t>, error_t>
+    nn1_impl(const point_t target) const noexcept {
+        if constexpr (WithPayload && cfg.has_payload!=cfg_t::has_payload_t::INDEX) return std::unexpected{error_t::NotSupported};
         if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
 
         distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
-        payload_t best_id = {};
+        [[maybe_unused]] payload_t best_id = {};
 
         struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
         SearchNode stack[cfg.max_stack_depth];
@@ -644,7 +515,7 @@ public:
                 for (size_t i = 0; i < cfg.leaf_size; ++i) {
                     if (dists[i] < min_dist_sq) {
                         min_dist_sq = dists[i];
-                        best_id = b.ids[i];
+                        if constexpr (WithPayload) best_id = b.ids[i];
                     }
                 }
                 continue;
@@ -681,7 +552,12 @@ public:
 
         if (min_dist_sq >= Limits::INF2) [[unlikely]] return std::unexpected{error_t::NotFound};
 
-        return KnnResult{min_dist_sq, best_id};
+        if constexpr (WithPayload) return KnnResult{min_dist_sq, best_id};
+        else return min_dist_sq;
+    }
+
+    KD3_INLINE std::expected<KnnResult, error_t> query_1nn_inline(const point_t target) const noexcept {
+        return nn1_impl<true>(target);
     }
 
     /**
@@ -806,79 +682,7 @@ public:
     }
 
     KD3_INLINE std::expected<distance_t,error_t> query_distance2_inline(const point_t target) const noexcept {
-        if (buckets.empty()) [[unlikely]] return std::unexpected{error_t::EmptyContainer};
-
-        distance_t min_dist_sq = std::numeric_limits<distance_t>::max();
-
-        struct SearchNode { size_t idx; distance_t node_min_dist_sq; };
-        SearchNode stack[cfg.max_stack_depth]; 
-        size_t stack_sz = 0;
-        
-        stack[stack_sz++] = {0, scalar_t{}};
-
-        const size_t LEAF_THRESHOLD = buckets.size() - 1;
-        bool tight = false;
-        if constexpr (cfg.has_aabb) tight = node_boxes.size() >= 2 * buckets.size() - 1;
-
-        while (stack_sz > 0) {
-            auto [curr, node_min_dist_sq] = stack[--stack_sz];
-
-            if (node_min_dist_sq >= min_dist_sq) continue;
-
-            if (curr >= LEAF_THRESHOLD) {
-                size_t bucket_idx = curr - LEAF_THRESHOLD;
-                const auto& b = buckets[bucket_idx];
-
-                distance_t dists[cfg.leaf_size] = {};
-                for (size_t d = 0; d < Limits::D; ++d) {
-                    for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                        distance_t diff = target[d] - b.coords[d][i];
-                        dists[i] += diff * diff;
-                    }
-                }
-
-                for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                    if (dists[i] < min_dist_sq) {
-                        min_dist_sq = dists[i];
-                    }
-                }
-                continue;
-            }
-
-            const size_t left = 2 * curr + 1;
-            const size_t right = 2 * curr + 2;
-
-            if (tight && min_dist_sq < Limits::INF2) {
-                const distance_t dl = node_dist_sq(left, target);
-                const distance_t dr = node_dist_sq(right, target);
-                const size_t   f = dl <= dr ? left : right;
-                const size_t   s = dl <= dr ? right : left;
-                const distance_t df = dl <= dr ? dl : dr;
-                const distance_t ds = dl <= dr ? dr : dl;
-                if (ds < min_dist_sq) stack[stack_sz++] = {s, ds};
-                if (df < min_dist_sq) stack[stack_sz++] = {f, df};
-            } else {
-                uint8_t dim = get_dim(curr);
-                scalar_t split = split_vals[curr];
-
-                distance_t axis_dist = target[dim] - split;
-                distance_t axis_dist_sq = axis_dist * axis_dist;
-
-                size_t first = (axis_dist < scalar_t{}) ? left : right;
-                size_t second = (axis_dist < scalar_t{}) ? right : left;
-
-                if (axis_dist_sq < min_dist_sq) {
-                    stack[stack_sz++] = {second, axis_dist_sq};
-                }
-                stack[stack_sz++] = {first, distance_t{}};
-            }
-        }
-
-        // Filter out pseudo-infinity points in case tree only had dummy data (impossible from Builder) 
-        // or user queried 1e15f explicitly.
-        if (min_dist_sq >= Limits::INF2) [[unlikely]] return std::unexpected{error_t::NotFound};
-
-        return min_dist_sq;
+        return nn1_impl<false>(target);
     }
 };
 

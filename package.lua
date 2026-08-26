@@ -1,7 +1,7 @@
 package("kd3")
     set_homepage("https://github.com/karurochori/kd3")
     set_description("KD-Tree acceleration library")
-    set_license("AGPL3")
+    set_license("AGPL-3.0-only")
 
     add_urls("https://github.com/karurochori/kd3.git")
 

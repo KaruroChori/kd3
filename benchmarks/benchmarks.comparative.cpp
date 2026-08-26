@@ -644,8 +644,8 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
                 nf_tree.knnSearch(q.data(), kk, nf_indices.data(), nf_dists.data());
                 const auto brute = linear_scan(q.data(), kk, reference);
                 for (size_t j = 0; j < kk; ++j) {
-                    if (nf_indices[j] != brute[j].payload_id &&
-                        nf_dists[j] != brute[j].dist_sq) { ok = false; break; }
+                    const float tol = 1e-4f * std::max(1.0f, brute[j].dist_sq);
+                    if (std::fabs(nf_dists[j] - brute[j].dist_sq) > tol) { ok = false; break; }
                 }
                 if (!ok) break;
             }

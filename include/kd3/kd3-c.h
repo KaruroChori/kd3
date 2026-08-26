@@ -33,13 +33,13 @@ extern "C" {
 
 #ifndef KD3_SIMD_PARALLELISM
     #if defined(__AVX512F__)
-        #define  KD3_SIMD_PARALLELISM  16;
+        #define  KD3_SIMD_PARALLELISM  16
     #elif defined(__AVX2__) || defined(__AVX__)
-        #define  KD3_SIMD_PARALLELISM 8;
+        #define  KD3_SIMD_PARALLELISM 8
     #elif defined(__SSE4_2__) || defined(__SSE2__)
-        #define  KD3_SIMD_PARALLELISM 4;
+        #define  KD3_SIMD_PARALLELISM 4
     #else
-        #define  KD3_SIMD_PARALLELISM 1;
+        #define  KD3_SIMD_PARALLELISM 1
     #endif
 #endif
 
@@ -85,7 +85,8 @@ typedef enum  {
     KD3$(EmptyContainer),
     KD3$(NotSupported),
     KD3$(NotImplemented),
-    KD3$(NotFound)
+    KD3$(NotFound),
+    KD3$(InsufficientStorage)
 } KD3$(error_t);
 
 /**
