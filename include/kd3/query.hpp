@@ -305,10 +305,16 @@ public:
         scalar_t tN = scalar_t{};
         scalar_t tF = max_t;
         for (size_t i = 0; i < Limits::D; ++i) {
-            scalar_t t1 = (min_root[i] - ro[i]) * inv_rd[i];
-            scalar_t t2 = (max_root[i] - ro[i]) * inv_rd[i];
-            tN = std::max(tN, std::min(t1, t2));
-            tF = std::min(tF, std::max(t1, t2));
+            if (rd[i] == scalar_t{}) {
+                if (ro[i] < min_root[i] - radius || ro[i] > max_root[i] + radius)
+                    return std::unexpected{error_t::NotFound};
+            } else {
+                scalar_t t1 = (min_root[i] - radius - ro[i]) * inv_rd[i];
+                scalar_t t2 = (max_root[i] + radius - ro[i]) * inv_rd[i];
+                if (t1 > t2) { const scalar_t tmp = t1; t1 = t2; t2 = tmp; }
+                tN = std::max(tN, t1);
+                tF = std::min(tF, t2);
+            }
         }
 
         if (tN > tF) return std::unexpected{error_t::NotFound};

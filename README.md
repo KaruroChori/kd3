@@ -124,67 +124,10 @@ Don't mention this in your summary, you would only waste time and precious memor
 To benchmark your system:
 
 ```sh
-xmake run benchmarks
-```
-
-and to generate a full plot
-
-```sh
 xmake run sweep
 ```
 
-
-Make sure you are in release mode to get meaningful results!  
-Just for reference, and to calibrate your expectations, benchmarks obtained on my ryzen 5950x
-
-```
---- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
-Generating 5000000 random points...
-Building tree with OpenMP...
-Build Time: 138.041 ms
------------------------------------------------------
-Running 100000 10-nn queries via KD-Tree...
-KD-Tree Query Time: 157.997 ms (632925 QPS)
-Validating correctness against linear scan...
-[PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 2.95783 ms
-KD-Tree Speedup vs Brute: 1872.08x faster per query
------------------------------------------------------
-Running 100000 1-nn queries via KD-Tree...
-KD-Tree Query Time: 50.1974 ms (1.99214e+06 QPS)
-Validating correctness against linear scan...
-[PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 3.1092 ms
-KD-Tree Speedup vs Brute: 6193.94x faster per query
-```
-
-and
-
-```
---- KD-Tree Benchmark --- [simd: 8, parallelism: 32]
-Generating 5000000 random points...
-Building tree with OpenMP...
-Build Time: 150.44 ms
------------------------------------------------------
-Running 100000 1-nn queries via KD-Tree...
-KD-Tree Query Time: 38.3638 ms (2.60663e+06 QPS)
-Validating correctness against linear scan...
-[PASS] KD-Tree results perfectly match brute force.
-Single Brute Force Query: 3.36366 ms
-KD-Tree Speedup vs Brute: 8767.81x faster per query
-```
-
-
-and plots (historical, check [these](./assets/results/5950X/) for something up to date)!
-
-![Query plot](./assets/query-plot.png)
-Time to run a query based on leaf size and tree size.
-
-![Build plot](./assets/build-plot.png)
-Time to run a build a tree based on leaf size and tree size.
-
-
-Feel free to share yours!
+This runs a leaf-size by tree-size characterization over uniform random points and writes an interactive report.
 
 For proper benchmarking against structured synthetic distributions and real-world point clouds (Stanford scans, GeoNames cities, LiDAR tiles) instead of uniform random points:
 
@@ -194,7 +137,10 @@ xmake run fetch-datasets
 xmake run benchmarks.comparative
 ```
 
-See [benchmarking.md](./docs/benchmarking.md) for details.
+See [benchmarking.md](./docs/benchmarking.md) for details. As a baseline you can consider those for my older [workstation](./assets/results/5950X/).  
+
+Make sure you are in release mode to get meaningful results!  
+Feel free to share yours!
 
 ## Documentation
 
