@@ -1,15 +1,15 @@
-A 「✨blazingly fast✨」[^1] library for kd-trees, for keys of small dimensionality (ideally 2,3,4 but it can do more).  
-It uses nearly all tricks I was able to get out of my hat to make it as fast as possible: OpenMP for multithreading, SIMD-friendly when feasible, AoS/SoA design etc.  
-It is not the most complete nor the most flexible, but it is what it needs to be, and within its narrow scope it works remarkably well.  
+A 「✨blazingly fast✨」[^1] library for kd-trees of small key dimensionality (ideally 2,3,4 but it can do more).  
+It uses nearly all tricks I was able to get out of my hat to make it as fast as possible: OpenMP for multithreading building, SIMD-friendly layouts whenever feasible, AoS/SoA design etc.  
+It is not the most complete nor the most flexible library out there, but it is what it needs to be, and within its narrow scope it works remarkably well.  
 
 ## Features
 
 - **Header-Only:** drop `include/kd3/*` into your project, and you are good to go. You are not tied to `xmake` as you build system of choice.  
-- **Extremely fast!** Like for real! k-NN queries are more than [2x](./docs/benchmarking.md) fast compared to [nanoflann](https://github.com/jlblancoc/nanoflann).
+- **Extremely fast!** Like for real! k-NN queries in most scenarios are significantly faster compared to [nanoflann](https://github.com/jlblancoc/nanoflann), please check the compelte [benchmarks](./docs/benchmarking.md) for a comparative overview.
 - **Trivially Offloadable:** queries are executed through a non-owning `KdTreeView` (using `std::span`), making the search logic trivially copyable and perfectly suited for GPU offloading, embedded computing and storage via memory mapped files.
-- **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized.
-- **Zero-Allocation Queries:** traversal uses a bounded local stack and in-place buffer manipulation. This functionality is distributed as a standalone header, so you can consume trees generated elsewhere without pulling in `std::vector` or other opinionated containers.  
-- **C-API Available:** a C interface wrapper is provided for FFI integration, in the form of an STB-like library.
+- **SIMD Optimized:** tree leaves are formatted as Structure-of-Arrays (SoA), allowing distance calculations to be fully vectorized in bulk.
+- **Zero-Allocation:** traversal uses a bounded local stack and in-place buffer manipulation. Building also needs no allocations as the final tree size is predetermined by construction. Hence, queries and building needs no dynamic memory and are distributed as standalone headers, so that `std::vector` does not pollute your codebase.  
+- **C-API Available:** a C interface wrapper is provided for FFI integration, in the shape of an STB-like library.
 - **Shader implementation:** a GLSL generator[^4] for code matching the query functions, allowing rendering on the GPU without OpenMP device offloading without recomputing the trees.
 
 ## Quick Start (C++)
@@ -59,6 +59,8 @@ int main() {
 }
 ```
 
+ok, this is not much, why don we try with...
+
 ## A fancier demo
 
 ```sh
@@ -69,21 +71,21 @@ xmake run render.raymarch
 ![Screenshot of the raymarching renderer](./assets/screenshot.png)
 
 A raymarched scene, with a low number of samples derived from an SDF (rendered as disk because they are cute).  
-Just to show what a KD-tree allows for once properly optimized. Anecdotally, it is a 5x improvement compared to a naive kd-implementation I was using as baseline during development, without touching the rendering pipeline itself.  
+Just to show what a KD-tree allows for once properly optimized. Anecdotally, it is a 5x improvement compared to a naive kd-implementation I was using as baseline during development, without even touching the rendering pipeline itself which is known to be far from optimal.  
 
 You might be wondering... are you not stupid? Why don't you just render the SDF itself? Well, the twist operator does not preserve the exactness of the distance field, preventing precise stepping in the raymarcher. Or to apply further operators like erosion, shells etc.  
 However, once "converted" into a KD-tree its exactness is restored 😊.  
 
-On CPU, increasing the number of surflets scales pretty well; GPUs on the other hand are a bit more challenged. Use key `G` to switch between `CPU` and `GPU`[^2]  
-I guess the moment its tree stops fitting in cache, performance drop miserably, but I have done no profiling so far.  
+On CPU, increasing the number of surflets scales pretty well; GPUs on the other hand is a bit more challenged as kd-trees are not exactly friendly with their compute model. Use key `G` to switch between `CPU` and `GPU`[^2]  
+I guess the moment the tree stops fitting in cache, performance drop miserably, but I have done no profiling so far.  
 
-Feel free to tweak the parameters in its [code](./examples/render.cpp) and see what happens. Enjoy!
+Feel free to tweak the parameters in its [code](./examples/render.raymarch.cpp) and see what happens. Enjoy!
 
 ## About performance & optimizations
 
 For fastest speed, profiling optimization are strongly suggested as they have shown a meaningful boost in performance for the building time of the kd-tree.  
-Oh, and GCC seems to be winning in terms of optimizations, but marginally. The delta was bigger in a prior version of this library, but they are now more or less aligned.  
-There is a C interface available, so that it can be used even without C++; you can probably expect some mild performance degradation, in my limited tests it was around 3% due to the lack of inlining.  
+Oh, and GCC seems to be winning in terms of optimizations, but only marginally. The delta was bigger in a prior version of this library, they are now more or less aligned.  
+There is a C interface available, so that it can be used even without C++; you can probably expect some mild performance degradation, in my limited tests it was around 3% due to the lack of aggressive inlining.  
 
 ## Dependencies
 
@@ -98,8 +100,7 @@ The only other dependency is having OpenMP support on your system, or at the ver
 
 This project is packaged to be used via `xmake`, although using it is as a simple header library is totally fine while working from C++, so feel free to copy it in your project as long as licence and attribution is carried over.
 
-- `KD3_SIMD_PARALLELISM` to override the default parallism level, based on your architecture.
-- `KD3_EXCEPTIONS_ENABLED` if you really want to force exceptions on and off, but using compiler flags is better.
+- `KD3_SIMD_PARALLELISM` to override the default parallism level, based on your architecture. Or just let autodetection do its job.
 
 ### Known issues
 
@@ -174,7 +175,7 @@ KD-Tree Speedup vs Brute: 8767.81x faster per query
 ```
 
 
-and plots!
+and plots (historical, check [these](./assets/results/5950X/) for something up to date)!
 
 ![Query plot](./assets/query-plot.png)
 Time to run a query based on leaf size and tree size.
@@ -185,7 +186,7 @@ Time to run a build a tree based on leaf size and tree size.
 
 Feel free to share yours!
 
-For benchmarking against structured synthetic distributions and real-world point clouds (Stanford scans, GeoNames cities, LiDAR tiles) instead of uniform random points:
+For proper benchmarking against structured synthetic distributions and real-world point clouds (Stanford scans, GeoNames cities, LiDAR tiles) instead of uniform random points:
 
 ```sh
 xmake f --with_evaluation=true
@@ -205,11 +206,11 @@ check for the index in your build folder.
 
 ## Usage
 
-If you plan on using it via xmake, you can use [package.lua](./package.lua) as reference for the package file.  
-You will also find the header only library artifacts for releases on the project page.  
+If you plan on using it via xmake, you can check [package.lua](./package.lua) as reference for the package file.  
+Or just add my own [registry](https://github.com/KaruroChori/xmake-chari-repo) to your xmake project.
+Every [release](https://github.com/KaruroChori/kd3/releases) comes with its own tarball of headers if you want to avoid the bloat.  
 
-There is no good reason for us to build and distribute binary releases of this library; it leverages `march=native` to deliver its best performance, so you are expected to build it for your own target system.  
-
+There is no good reason for us to build and distribute binary releases of this library, as it leverages `march=native` to deliver its best performance.  
 
 ## Licence
 
@@ -219,4 +220,4 @@ Feel free to contact me if you need a different arrangement for your application
 [^1]: Yes you are allowed to throw up.
 [^2]: Unlike most of my other projects, GPU support here is via a custom GLSL implementation of the query functions and not OpenMP offloading, but it would be nice to test that as well 😊.
 [^3]: The plan is to avoid shipping glsl files to be imported, but to add a script (also invokable via CLI) to generate them, so to allow more freedom in integration.
-[^4]: Experimental! It is possible this will break in future releases as I might be interested exporing [slang](https://shader-slang.org/).
+[^4]: Experimental! And less configurable compared to the implementation on host. It is possible this will break in future releases as I might be interested exporing [slang](https://shader-slang.org/).
