@@ -161,4 +161,17 @@ target("render.raytrace")
         add_cxflags( "-march=native")
     end
 
+target("render.autzen")
+    set_kind("binary")
+    set_rundir("$(projectdir)")
+    add_files("./examples/render.autzen.cpp")
+    add_deps("kd3")
+    add_packages("raylib")
+    add_packages(omp_package)
+    if is_mode("release") then
+        set_optimize("fastest")
+        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+        add_cxflags( "-march=native")
+    end
+
 end

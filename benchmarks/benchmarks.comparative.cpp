@@ -43,6 +43,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <omp.h>
 
 #ifdef KD3_BENCH_NANOFLANN
 #include <nanoflann.hpp>
@@ -615,7 +616,12 @@ void measure_nanoflann(const kdbench::PointCloud& reference,
                        const Options& opts, NfData& out) {
 #if defined(KD3_BENCH_NANOFLANN)
     Kd3PointAdaptor<TreeType> adaptor(reference);
-    NanoflannTree<TreeType> nf_tree(3, adaptor, {10});
+    // Build with the same number of threads kd3's OpenMP build uses, so the
+    // build-time comparison is fair.
+    nanoflann::KDTreeSingleIndexAdaptorParams params(
+        10, nanoflann::KDTreeSingleIndexAdaptorFlags::None,
+        static_cast<unsigned>(omp_get_max_threads()));
+    NanoflannTree<TreeType> nf_tree(3, adaptor, params);
     auto t0 = std::chrono::steady_clock::now();
     nf_tree.buildIndex();
     out.present = true;

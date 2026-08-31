@@ -18,8 +18,16 @@
 #include <type_traits>
 #include "version.h"
 
-//TODO: change a bit to make it more compatible with other compilers as well.
-#define KD3_INLINE inline __attribute__((always_inline))
+// Force-inline for hot query paths. __forceinline / always_inline ensure the
+// per-frame query is inlined into the caller for a tight render loop, while the
+// plain fallback keeps it valid on other compilers.
+#if defined(_MSC_VER)
+  #define KD3_INLINE inline __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+  #define KD3_INLINE inline __attribute__((always_inline))
+#else
+  #define KD3_INLINE inline
+#endif
 
 namespace kd3 {
 
