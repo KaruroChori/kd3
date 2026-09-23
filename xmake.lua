@@ -1,4 +1,4 @@
-local version = os.getenv("KD3_VERSION") or "1.3.0"
+local version = os.getenv("KD3_VERSION") or "1.3.1"
 local major, minor, patch = version:match("^(%d+)%.?(%d*)%.?(%d*)")
 set_version(version)
 set_license("AGPL-3.0-only")
