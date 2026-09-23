@@ -12,14 +12,27 @@ option("use_openmp")
     set_description("Build with the real OpenMP package; disable to use omp-stub (fake OpenMP, runs serial)")
 option_end()
 
+option("native")
+    set_default(true)
+    set_showmenu(true)
+    set_category("Build Options")
+    set_description("Tune for the local CPU (-march=native, -ffast-math) in release builds")
+option_end()
+
 local omp_package = has_config("use_openmp") and "openmp" or "omp-stub"
 add_requires(omp_package)
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
 set_languages("cxx23","c23")
 
+target("kd3_headers")
+    set_kind("headeronly")
+    add_includedirs("include", {public = true})
+    add_headerfiles("include/(**)", {prefixdir = ""})
+
 target("kd3")
     set_kind("static")
+    set_default(false)
     add_cxxflags("-fno-exceptions","-fno-unwind-tables","-fno-rtti","-nostdlib++")
     --add_ldflags("-nostdlib++")
     add_includedirs("include", {public=true})    
@@ -29,7 +42,7 @@ target("kd3")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native")
+        if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
     end
     before_build(function (target)
         local ver = version
@@ -52,7 +65,7 @@ target("c-interface")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native")
+        if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
     end
     set_default(false)
 
@@ -64,7 +77,7 @@ target("sweep")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags("-ffast-math", "-march=native")
+        if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
     end
     set_default(false)
 
@@ -74,7 +87,7 @@ target("kd3-glslgen")
     add_includedirs("include", {public=true})
     if is_mode("release") then
         set_optimize("fastest")
-        add_cxflags("-ffast-math", "-march=native")
+        if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
     end
     set_default(false)
 
@@ -127,7 +140,7 @@ if has_config("with_evaluation") then
         end
         if is_mode("release") then
             set_optimize("fastest")
-            add_cxflags("-ffast-math", "-march=native")
+            if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
         end
         -- `xmake run` would otherwise start the binary from a build directory,
         -- hiding the datasets/ folder next to the project.
@@ -146,7 +159,7 @@ target("render.raymarch")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags( "-march=native")
+        if has_config("native") then add_cxflags( "-march=native") end
     end
 
 target("render.raytrace")
@@ -158,7 +171,7 @@ target("render.raytrace")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags( "-march=native")
+        if has_config("native") then add_cxflags( "-march=native") end
     end
 
 target("render.autzen")
@@ -171,7 +184,7 @@ target("render.autzen")
     if is_mode("release") then
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        add_cxflags( "-march=native")
+        if has_config("native") then add_cxflags( "-march=native") end
     end
 
 end
