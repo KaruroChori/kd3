@@ -124,30 +124,6 @@ public:
     }
 
     /**
-     * @brief Builds a kd-tree from a span of points which are assumed to be already ordered.
-     * 
-     * Note: The input span will be mutated (partially sorted) during construction.
-     * 
-     * @param temp_pts Mutable span of points to build the tree from.
-     * @return std::expected<KdTree, error_t> The built tree, or error_t::EmptyInput if the input was empty.
-     */
-    static std::expected<KdTree, error_t> build_from_ordered(std::span<const FatPoint> temp_pts) {
-        if (temp_pts.empty()) return std::unexpected(error_t::EmptyInput);
-        const size_t B = (temp_pts.size() + cfg.leaf_size - 1) / cfg.leaf_size;
-        const size_t dims_per_word = KdTreeView<Limits, cfg>::dims_per_word;
-        constexpr bool want_boxes = cfg.has_aabb;
-        std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
-        std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
-        BucketVec buckets(B);
-        BoxVec boxes(want_boxes ? 2 * B - 1 : 0);
-        auto view = build_from_ordered_into<Limits, cfg>(
-            std::span<FatPoint>{const_cast<FatPoint*>(temp_pts.data()), temp_pts.size()},
-            BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
-        if (!view) return std::unexpected(view.error());
-        return KdTree(std::move(vals), std::move(dims), std::move(buckets), std::move(boxes));
-    }
-
-    /**
      * @brief Extracts the non-owning view capable of device offload.
      * 
      * @return KdTreeView The view of this tree after building.

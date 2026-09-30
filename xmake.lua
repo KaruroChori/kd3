@@ -21,6 +21,7 @@ option_end()
 
 local omp_package = has_config("use_openmp") and "openmp" or "omp-stub"
 add_requires(omp_package)
+add_requires("doctest >=2.4.11")
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
 set_languages("cxx23","c23")
@@ -66,6 +67,19 @@ target("c-interface")
         set_optimize("fastest")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
         if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
+    end
+    set_default(false)
+
+target("tests")
+    set_kind("binary")
+    add_files("tests/**.cpp")
+    add_includedirs("include", {public=true})
+    add_packages(omp_package)
+    add_packages("doctest")
+    -- Dodge the known GCC auto-vectorizer bug on tiny trees (see README).
+    add_cxxflags("-fno-tree-vectorize")
+    if is_mode("release") then
+        set_optimize("fastest")
     end
     set_default(false)
 
