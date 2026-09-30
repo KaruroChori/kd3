@@ -526,11 +526,20 @@ public:
                     }
                 }
 
-                for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                    if (dists[i] < min_dist_sq) {
-                        min_dist_sq = dists[i];
-                        if constexpr (WithPayload) best_id = b.ids[i];
+                if constexpr (WithPayload) {
+                    distance_t leaf_min = std::numeric_limits<distance_t>::max();
+                    for (size_t i = 0; i < cfg.leaf_size; ++i)
+                        if (dists[i] < leaf_min) leaf_min = dists[i];
+
+                    if (leaf_min < min_dist_sq) {
+                        min_dist_sq = leaf_min;
+                        for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                            if (dists[i] == leaf_min) { best_id = b.ids[i]; break; }
+                        }
                     }
+                } else {
+                    for (size_t i = 0; i < cfg.leaf_size; ++i)
+                        if (dists[i] < min_dist_sq) min_dist_sq = dists[i];
                 }
                 continue;
             }
@@ -601,9 +610,19 @@ public:
                 heap_size++;
                 std::push_heap(buffer.begin(), buffer.begin() + heap_size);
             } else if (dist < buffer.front().dist_sq) {
-                std::pop_heap(buffer.begin(), buffer.begin() + heap_size);
-                buffer[heap_size - 1] = {dist, id};
-                std::push_heap(buffer.begin(), buffer.begin() + heap_size);
+                size_t i = 0;
+                const size_t n = heap_size;
+                while (true) {
+                    const size_t l = 2 * i + 1;
+                    if (l >= n) break;
+                    const size_t r = l + 1;
+                    size_t child = l;
+                    if (r < n && buffer[r].dist_sq > buffer[l].dist_sq) child = r;
+                    if (buffer[child].dist_sq <= dist) break;
+                    buffer[i] = buffer[child];
+                    i = child;
+                }
+                buffer[i] = {dist, id};
             }
         };
 
@@ -633,9 +652,15 @@ public:
                     }
                 }
 
-                for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                    push_heap(dists[i], b.ids[i]);
-                }
+                distance_t leaf_min = std::numeric_limits<distance_t>::max();
+                for (size_t i = 0; i < cfg.leaf_size; ++i)
+                    if (dists[i] < leaf_min) leaf_min = dists[i];
+
+                const distance_t bound_now =
+                    heap_size < k ? Limits::INF2 : buffer.front().dist_sq;
+                if (leaf_min < bound_now)
+                    for (size_t i = 0; i < cfg.leaf_size; ++i)
+                        push_heap(dists[i], b.ids[i]);
                 continue;
             }
 
