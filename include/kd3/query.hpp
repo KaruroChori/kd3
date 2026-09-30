@@ -350,27 +350,52 @@ public:
                 size_t bucket_idx = curr - LEAF_THRESHOLD;
                 const auto& b = buckets[bucket_idx];
                 
-                for (size_t i = 0; i < cfg.leaf_size; ++i) {
-                    scalar_t t_num = 0.0f;
-                    for(size_t d = 0; d < Limits::D; ++d) {
-                        t_num += (b.coords[d][i] - ro[d]) * rd[d];
+                if constexpr (cfg.simd_parallelism > 1) {
+                    scalar_t ts[cfg.leaf_size] = {};
+                    for (size_t d = 0; d < Limits::D; ++d) {
+                        for (size_t i = 0; i < cfg.leaf_size; ++i)
+                            ts[i] += (b.coords[d][i] - ro[d]) * rd[d];
+                    }
+                    for (size_t i = 0; i < cfg.leaf_size; ++i)
+                        ts[i] *= inv_rd_len_sq;
+
+                    scalar_t ds[cfg.leaf_size] = {};
+                    for (size_t d = 0; d < Limits::D; ++d) {
+                        for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                            scalar_t px = ro[d] + ts[i] * rd[d];
+                            scalar_t diff = b.coords[d][i] - px;
+                            ds[i] += diff * diff;
+                        }
                     }
 
-                    // Project point onto the mathematical line
-                    scalar_t t = t_num * inv_rd_len_sq;
-                    
-                    if (t >= 0.0f && t < best_t) {
-                        scalar_t dist_sq = 0.0f;
-                        for(size_t d = 0; d < Limits::D; ++d) {
-                            scalar_t px = ro[d] + t * rd[d];
-                            scalar_t diff = b.coords[d][i] - px;
-                            dist_sq += diff * diff;
-                        }
-                                        
-                        if (dist_sq <= radius_sq + eps) {
-                            best_t = t;
+                    for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                        if (ts[i] >= 0.0f && ts[i] < best_t && ds[i] <= radius_sq + eps) {
+                            best_t = ts[i];
                             if constexpr (WithIndex) best_id = b.ids[i];
                             hit = true;
+                        }
+                    }
+                }
+                // Legacy path is faster if SIMD word size is too small.
+                else {
+                    for (size_t i = 0; i < cfg.leaf_size; ++i) {
+                        scalar_t t_num = 0.0f;
+                        for (size_t d = 0; d < Limits::D; ++d)
+                            t_num += (b.coords[d][i] - ro[d]) * rd[d];
+
+                        scalar_t t = t_num * inv_rd_len_sq;
+                        if (t >= 0.0f && t < best_t) {
+                            scalar_t dist_sq = 0.0f;
+                            for (size_t d = 0; d < Limits::D; ++d) {
+                                scalar_t px = ro[d] + t * rd[d];
+                                scalar_t diff = b.coords[d][i] - px;
+                                dist_sq += diff * diff;
+                            }
+                            if (dist_sq <= radius_sq + eps) {
+                                best_t = t;
+                                if constexpr (WithIndex) best_id = b.ids[i];
+                                hit = true;
+                            }
                         }
                     }
                 }

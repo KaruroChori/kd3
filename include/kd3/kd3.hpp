@@ -10,6 +10,8 @@
 
 #include <span>
 #include <vector>
+#include <memory>
+#include <utility>
 #include <expected>
 #include <algorithm>
 #include <bit>
@@ -20,6 +22,36 @@
 #include "build.hpp"
 
 namespace kd3 {
+
+namespace detail {
+
+/// Allocator that leaves default-inserted elements uninitialized. The builder
+/// fills every byte of the tree storage, so the value-initialization (zeroing)
+/// std::vector would otherwise perform is pure overhead.
+template <class T>
+struct no_init_allocator {
+    using value_type = T;
+    no_init_allocator() = default;
+    template <class U> constexpr no_init_allocator(const no_init_allocator<U>&) noexcept {}
+
+    T* allocate(std::size_t n) { return std::allocator<T>{}.allocate(n); }
+    void deallocate(T* p, std::size_t n) noexcept { std::allocator<T>{}.deallocate(p, n); }
+
+    template <class U, class... Args>
+    void construct(U* p, Args&&... args) {
+        if constexpr (sizeof...(Args) == 0) {
+            // default-insertion: leave the storage untouched
+        } else {
+            ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
+        }
+    }
+    template <class U> void destroy(U* p) { p->~U(); }
+
+    template <class U> bool operator==(const no_init_allocator<U>&) const noexcept { return true; }
+    template <class U> bool operator!=(const no_init_allocator<U>&) const noexcept { return false; }
+};
+
+}  // namespace detail
 
 // ---------------------------------------------------------
 // OWNING CONTAINER (Handles Allocations / Builder)
@@ -47,15 +79,18 @@ public:
     using error_t = KdTreeView<Limits,cfg>::error_t;
 
 private:
+    using BucketVec = std::vector<LeafBucket, detail::no_init_allocator<LeafBucket>>;
+    using BoxVec = std::vector<NodeBox, detail::no_init_allocator<NodeBox>>;
+
     std::vector<scalar_t> split_vals;
     std::vector<uint64_t> split_dims;
-    std::vector<LeafBucket> buckets;
-    std::vector<typename KdTreeView<Limits,cfg>::NodeBox> node_boxes;
+    BucketVec buckets;
+    BoxVec node_boxes;
     point_t min_root;
     point_t max_root;
 
-    KdTree(std::vector<scalar_t> vals, std::vector<uint64_t> dims, std::vector<LeafBucket> bks,
-           std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes = {})
+    KdTree(std::vector<scalar_t> vals, std::vector<uint64_t> dims, BucketVec bks,
+           BoxVec boxes = {})
         : split_vals(std::move(vals)), split_dims(std::move(dims)), buckets(std::move(bks)),
           node_boxes(std::move(boxes)) {
         for (size_t d = 0; d < Limits::D; ++d) {
@@ -80,9 +115,10 @@ public:
         constexpr bool want_boxes = cfg.has_aabb;
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
-        std::vector<LeafBucket> buckets(B);
-        std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes(want_boxes ? 2 * B - 1 : 0);
-        auto view = build_into<Limits, cfg>(temp_pts, BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
+        BucketVec buckets(B);
+        BoxVec boxes(want_boxes ? 2 * B - 1 : 0);
+        auto view = build_into<Limits, cfg>(temp_pts,
+                                            BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
         if (!view) return std::unexpected(view.error());
         return KdTree(std::move(vals), std::move(dims), std::move(buckets), std::move(boxes));
     }
@@ -102,8 +138,8 @@ public:
         constexpr bool want_boxes = cfg.has_aabb;
         std::vector<scalar_t> vals(B > 0 ? B - 1 : 0);
         std::vector<uint64_t> dims((vals.size() + dims_per_word - 1) / dims_per_word, 0);
-        std::vector<LeafBucket> buckets(B);
-        std::vector<typename KdTreeView<Limits,cfg>::NodeBox> boxes(want_boxes ? 2 * B - 1 : 0);
+        BucketVec buckets(B);
+        BoxVec boxes(want_boxes ? 2 * B - 1 : 0);
         auto view = build_from_ordered_into<Limits, cfg>(
             std::span<FatPoint>{const_cast<FatPoint*>(temp_pts.data()), temp_pts.size()},
             BuildTarget<Limits, cfg>{vals, dims, buckets, boxes});
