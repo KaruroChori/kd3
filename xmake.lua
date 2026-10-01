@@ -1,4 +1,4 @@
-local version = os.getenv("KD3_VERSION") or "1.3.1"
+local version = os.getenv("KD3_VERSION") or "1.4.0"
 local major, minor, patch = version:match("^(%d+)%.?(%d*)%.?(%d*)")
 set_version(version)
 set_license("AGPL-3.0-only")
@@ -30,6 +30,17 @@ target("kd3_headers")
     set_kind("headeronly")
     add_includedirs("include", {public = true})
     add_headerfiles("include/(**)", {prefixdir = ""})
+    before_build(function (target)
+        local ver = version
+        local ma, mi, pa = ver:match("^(%d+)%.?(%d*)%.?(%d*)")
+        local f = io.open(path.join(os.projectdir(), "include/kd3/version.h"), "w")
+        f:write("#pragma once\n\n")
+        f:write("#define KD3_VERSION_MAJOR " .. (ma or "0") .. "\n")
+        f:write("#define KD3_VERSION_MINOR " .. (mi or "0") .. "\n")
+        f:write("#define KD3_VERSION_PATCH " .. (pa or "0") .. "\n")
+        f:write("#define KD3_VERSION_STRING \"" .. ver .. "\"\n")
+        f:close()
+    end)
 
 target("kd3")
     set_kind("static")
@@ -45,17 +56,6 @@ target("kd3")
         -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
         if has_config("native") then add_cxflags("-ffast-math", "-march=native") end
     end
-    before_build(function (target)
-        local ver = version
-        local ma, mi, pa = ver:match("^(%d+)%.?(%d*)%.?(%d*)")
-        local f = io.open(path.join(os.projectdir(), "include/kd3/version.h"), "w")
-        f:write("#pragma once\n\n")
-        f:write("#define KD3_VERSION_MAJOR " .. (ma or "0") .. "\n")
-        f:write("#define KD3_VERSION_MINOR " .. (mi or "0") .. "\n")
-        f:write("#define KD3_VERSION_PATCH " .. (pa or "0") .. "\n")
-        f:write("#define KD3_VERSION_STRING \"" .. ver .. "\"\n")
-        f:close()
-    end)
 
 target("c-interface")
     set_kind("binary")
@@ -113,9 +113,7 @@ option("with_demo")
     set_description("Build the GPU/CPU graphical raymarching demo")
 option_end()
 
--- Option that enables the dataset-driven evaluation suite: fetch-datasets and
--- benchmarks.datasets. Kept behind a flag so heavyweight dependencies (e.g. LASlib/LASzip)
--- never affect regular users.
+-- Option that enables the dataset-driven evaluation suite. gating expensive deps
 option("with_evaluation")
     set_default(false)
     set_showmenu(true)
@@ -164,41 +162,41 @@ end
 
 if has_config("with_demo") then
 
-target("render.raymarch")
-    set_kind("binary")
-    add_files("./examples/render.raymarch.cpp")
-    add_deps("kd3")
-    add_packages("raylib")
-    add_packages(omp_package)
-    if is_mode("release") then
-        set_optimize("fastest")
-        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        if has_config("native") then add_cxflags( "-march=native") end
-    end
+    target("render.raymarch")
+        set_kind("binary")
+        add_files("./examples/render.raymarch.cpp")
+        add_deps("kd3")
+        add_packages("raylib")
+        add_packages(omp_package)
+        if is_mode("release") then
+            set_optimize("fastest")
+            -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+            if has_config("native") then add_cxflags( "-march=native") end
+        end
 
-target("render.raytrace")
-    set_kind("binary")
-    add_files("./examples/render.raytrace.cpp")
-    add_deps("kd3")
-    add_packages("raylib")
-    add_packages(omp_package)
-    if is_mode("release") then
-        set_optimize("fastest")
-        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        if has_config("native") then add_cxflags( "-march=native") end
-    end
+    target("render.raytrace")
+        set_kind("binary")
+        add_files("./examples/render.raytrace.cpp")
+        add_deps("kd3")
+        add_packages("raylib")
+        add_packages(omp_package)
+        if is_mode("release") then
+            set_optimize("fastest")
+            -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+            if has_config("native") then add_cxflags( "-march=native") end
+        end
 
-target("render.autzen")
-    set_kind("binary")
-    set_rundir("$(projectdir)")
-    add_files("./examples/render.autzen.cpp")
-    add_deps("kd3")
-    add_packages("raylib")
-    add_packages(omp_package)
-    if is_mode("release") then
-        set_optimize("fastest")
-        -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
-        if has_config("native") then add_cxflags( "-march=native") end
-    end
+    target("render.autzen")
+        set_kind("binary")
+        set_rundir("$(projectdir)")
+        add_files("./examples/render.autzen.cpp")
+        add_deps("kd3")
+        add_packages("raylib")
+        add_packages(omp_package)
+        if is_mode("release") then
+            set_optimize("fastest")
+            -- Instruct the compiler to use AVX and fast-math to ensure auto-vectorization
+            if has_config("native") then add_cxflags( "-march=native") end
+        end
 
 end

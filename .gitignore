@@ -5,3 +5,5 @@
 /.cache
 /datasets
 /kd3_datasets_report.csv
+.task/*-private/
+.task/.archive/*-private/
