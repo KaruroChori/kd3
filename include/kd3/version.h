@@ -1,6 +1,6 @@
 #pragma once
 
 #define KD3_VERSION_MAJOR 1
-#define KD3_VERSION_MINOR 3
-#define KD3_VERSION_PATCH 1
-#define KD3_VERSION_STRING "1.3.1"
+#define KD3_VERSION_MINOR 4
+#define KD3_VERSION_PATCH 0
+#define KD3_VERSION_STRING "1.4.0"

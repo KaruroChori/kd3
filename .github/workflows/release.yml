@@ -6,6 +6,8 @@ on:
 
 jobs:
   release:
+    env:
+      XMAKE_ROOT: "y"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,7 +31,9 @@ jobs:
           echo "version.h matches tag v${TAG_VERSION}"
 
       - name: install xmake
-        run: curl -fsSL https://xmake.io/shget.text | bash
+        run: |
+          curl -fsSL https://xmake.io/shget.text | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: build
         run: |
