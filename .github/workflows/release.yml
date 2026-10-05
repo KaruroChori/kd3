@@ -3,6 +3,12 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release"
+        required: true
+        type: string
 
 jobs:
   release:
@@ -17,8 +23,12 @@ jobs:
       - name: set version
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: validate tag matches version.h
         run: |
@@ -52,7 +62,22 @@ jobs:
             README.md
 
       - name: create release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
           generate_release_notes: false
+
+      - name: bump xmake-chari-repo
+        env:
+          CHARI_REPO_TOKEN: ${{ secrets.CHARI_REPO_TOKEN }}
+        run: |
+          if [ -z "$CHARI_REPO_TOKEN" ]; then
+            echo "CHARI_REPO_TOKEN not set; skipping registry bump"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: token $CHARI_REPO_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://git.chatomari.work/api/v1/repos/lazy-eggplant/xmake-chari-repo/actions/workflows/bump-version.yml/dispatches" \
+            -d "{\"ref\":\"master\",\"inputs\":{\"package\":\"kd3\",\"version\":\"${{ steps.version.outputs.version }}\",\"sha\":\"$(git rev-parse HEAD)\"}}"
