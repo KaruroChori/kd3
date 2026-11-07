@@ -1,0 +1,9 @@
+/compile_commands.json
+/build
+/.xmake
+/private
+/.cache
+/datasets
+/kd3_datasets_report.csv
+.task/*-private/
+.task/.archive/*-private/
